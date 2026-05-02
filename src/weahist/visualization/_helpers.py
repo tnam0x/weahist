@@ -73,7 +73,7 @@ def build_title(
     place = location.name + (f", {location.country}" if location.country else "")
     title = f"Weather & Air Quality — {place}"
     subtitle = (
-        f"{start:%b %-d} → {end:%b %-d, %Y} · {granularity} · source: Open-Meteo"
+        f"{start:%b %-d} → {end:%b %-d, %Y} · {granularity.capitalize()} · source: Open-Meteo"
     )
     return title, subtitle
 

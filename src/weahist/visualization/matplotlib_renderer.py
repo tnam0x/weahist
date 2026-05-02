@@ -93,6 +93,13 @@ class MatplotlibRenderer:
             ax_humid.set_ylabel("Relative humidity (%)", color="royalblue")
             ax_humid.tick_params(axis="y", labelcolor="royalblue")
             ax_humid.set_ylim(0, 100)
+            self._annotate_extrema(
+                ax_humid,
+                local[humid_col],
+                unit="%",
+                value_fmt=".0f",
+                colors=("royalblue", "royalblue"),
+            )
 
         # --- Bottom panel: AQI with severity bands + filled area ---
         if has_aqi and ax_aqi is not None:
@@ -150,17 +157,25 @@ class MatplotlibRenderer:
         return output
 
     @staticmethod
-    def _annotate_extrema(ax: Any, series: pd.Series, *, unit: str) -> None:
+    def _annotate_extrema(
+        ax: Any,
+        series: pd.Series,
+        *,
+        unit: str,
+        value_fmt: str = ".1f",
+        colors: tuple[str, str] = ("darkred", "navy"),
+    ) -> None:
         clean = series.dropna()
         if clean.empty:
             return
+        max_color, min_color = colors
         for label, idx, color, offset in (
-            ("max", clean.idxmax(), "darkred", (0, 14)),
-            ("min", clean.idxmin(), "navy", (0, -18)),
+            ("max", clean.idxmax(), max_color, (0, 14)),
+            ("min", clean.idxmin(), min_color, (0, -18)),
         ):
             value = float(clean.loc[idx])
             ax.annotate(
-                f"{label} {value:.1f}{unit}",
+                f"{label} {value:{value_fmt}}{unit}",
                 xy=(idx, value),
                 xytext=offset,
                 textcoords="offset points",

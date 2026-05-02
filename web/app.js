@@ -259,6 +259,7 @@ function plotlyConfig() {
   return {
     responsive: true,
     displaylogo: false,
+    displayModeBar: "hover",
     modeBarButtonsToRemove: ["lasso2d", "select2d"],
   };
 }
@@ -324,8 +325,10 @@ function renderSummary(history) {
   const temps = (history.weather[tempCol] || []).filter((v) => v != null && Number.isFinite(v));
   const aqis = (history.aqi.us_aqi || []).filter((v) => v != null && Number.isFinite(v));
 
+  const granularityLabel =
+    history.granularity.charAt(0).toUpperCase() + history.granularity.slice(1);
   const items = [
-    ["Granularity", history.granularity],
+    ["Granularity", granularityLabel],
     ["Observations", String(history.times.length)],
   ];
   if (temps.length) {

@@ -62,7 +62,7 @@ def fetch(
         f"Location: {query.location.name} ({query.location.latitude:.3f},"
         f" {query.location.longitude:.3f}, tz={query.location.timezone})"
     )
-    typer.echo(f"Range:    {query.start} → {query.end}  ({query.granularity})")
+    typer.echo(f"Range:    {query.start} → {query.end}  ({query.granularity.capitalize()})")
     typer.echo(f"Rows:     {len(df)}")
     typer.echo(f"Columns:  {', '.join(df.columns)}")
     if "us_aqi" in df.columns:

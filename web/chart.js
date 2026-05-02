@@ -30,7 +30,7 @@ export function buildFigure(history, theme) {
     plot_bgcolor: p.plotBg,
     font: { color: p.text },
     hovermode: "x unified",
-    margin: { t: 130, r: 30, b: 60, l: 70 },
+    margin: { t: 110, r: 50, b: 60, l: 70 },
     legend: {
       orientation: "h",
       yanchor: "bottom",
@@ -50,7 +50,9 @@ export function buildFigure(history, theme) {
   const titleText =
     `Weather & Air Quality — ${location.name}` +
     (location.country ? `, ${location.country}` : "");
-  const subtitle = `${start} → ${end} · ${granularity} · source: Open-Meteo`;
+  const granularityLabel =
+    granularity.charAt(0).toUpperCase() + granularity.slice(1);
+  const subtitle = `${start} → ${end} · ${granularityLabel} · source: Open-Meteo`;
 
   layout.title = {
     text: `${titleText}<br><sub>${subtitle}</sub>`,
@@ -74,12 +76,17 @@ export function buildFigure(history, theme) {
   };
 
   if (hasAqi) {
-    // Two rows. Row 1 [0.448, 1.0], Row 2 [0, 0.368].
-    layout.xaxis = { ...axisCommon, anchor: "y", domain: [0, 1] };
+    // Two rows. Row 1 [0.52, 1.0], Row 2 [0, 0.40] (12% gap).
+    layout.xaxis = {
+      ...axisCommon,
+      anchor: "y",
+      domain: [0, 1],
+      showticklabels: false,
+    };
     layout.yaxis = {
       ...axisCommon,
       anchor: "x",
-      domain: [0.448, 1.0],
+      domain: [0.52, 1.0],
       title: { text: "Temperature (°C)", font: { color: p.text } },
     };
     layout.yaxis2 = {
@@ -100,7 +107,7 @@ export function buildFigure(history, theme) {
     layout.yaxis3 = {
       ...axisCommon,
       anchor: "x2",
-      domain: [0, 0.368],
+      domain: [0, 0.40],
       title: { text: "US AQI (0–500)", font: { color: p.text } },
     };
   } else {
@@ -126,8 +133,10 @@ export function buildFigure(history, theme) {
     };
   }
 
-  // Weekend shading + day separators across all rows.
-  addTimeDecorations(layout, times, p, hasAqi);
+  // NOTE: AQI band shapes are pushed *before* weekend/day-separator shapes
+  // (in the `// AQI panel` block below), then `addTimeDecorations` is called
+  // afterwards so weekend rectangles overlay the bands. Plotly draws shapes
+  // in array order, so this keeps the weekend gray visible on both panels.
 
   // Temperature trace.
   if (tempCol) {
@@ -157,6 +166,13 @@ export function buildFigure(history, theme) {
       yaxis: "y2",
       line: { color: p.humidityLine, width: 1.5 },
       hovertemplate: "<b>%{y:.0f}%</b><extra>Humidity</extra>",
+    });
+    annotateExtrema(layout, times, weather[humidCol], p, "%", {
+      yref: "y2",
+      color: p.humidityLine,
+      digits: 0,
+      maxAy: -22,
+      minAy: 22,
     });
   }
 
@@ -213,6 +229,9 @@ export function buildFigure(history, theme) {
     annotateAqiExtrema(layout, times, aqi.us_aqi, p);
   }
 
+  // Weekend shading + day separators (pushed last so they overlay AQI bands).
+  addTimeDecorations(layout, times, p, hasAqi);
+
   return { data, layout };
 }
 
@@ -221,28 +240,13 @@ export function buildFigure(history, theme) {
 function addTimeDecorations(layout, times, p, hasAqi) {
   if (times.length === 0) return;
   const dayBoundaries = collectDayBoundaries(times);
-  const weekendSpans = collectWeekendSpans(dayBoundaries);
 
-  // Build vrect shapes for each row.
-  const refs = hasAqi
+  // Day separators on both panels.
+  const separatorRefs = hasAqi
     ? [{ xref: "x", yref: "y domain" }, { xref: "x2", yref: "y3 domain" }]
     : [{ xref: "x", yref: "y domain" }];
 
-  for (const { xref, yref } of refs) {
-    for (const [x0, x1] of weekendSpans) {
-      layout.shapes.push({
-        type: "rect",
-        xref,
-        yref,
-        x0,
-        x1,
-        y0: 0,
-        y1: 1,
-        fillcolor: p.weekendFill,
-        line: { width: 0 },
-        layer: "below",
-      });
-    }
+  for (const { xref, yref } of separatorRefs) {
     for (const x of dayBoundaries.slice(1, -1)) {
       layout.shapes.push({
         type: "line",
@@ -275,20 +279,6 @@ function collectDayBoundaries(times) {
   return out;
 }
 
-function collectWeekendSpans(boundaries) {
-  const spans = [];
-  for (const b of boundaries) {
-    const d = new Date(b);
-    if (d.getDay() === 6) {
-      // Saturday → 48h span
-      const end = new Date(d);
-      end.setDate(end.getDate() + 2);
-      spans.push([b, `${ymd(end)}T00:00:00`]);
-    }
-  }
-  return spans;
-}
-
 function ymd(d) {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
@@ -296,12 +286,16 @@ function ymd(d) {
   return `${y}-${m}-${day}`;
 }
 
-function annotateExtrema(layout, times, values, p, unit) {
+function annotateExtrema(layout, times, values, p, unit, opts = {}) {
   const indices = extremaIndices(values);
   if (!indices) return;
+  const yref = opts.yref || "y";
+  const digits = opts.digits ?? 1;
+  const colorMax = opts.color || p.tempLine;
+  const colorMin = opts.color || p.humidityLine;
   const items = [
-    { label: "max", idx: indices.maxIdx, color: p.tempLine, ay: -28 },
-    { label: "min", idx: indices.minIdx, color: p.humidityLine, ay: 28 },
+    { label: "max", idx: indices.maxIdx, color: colorMax, ay: opts.maxAy ?? -28 },
+    { label: "min", idx: indices.minIdx, color: colorMin, ay: opts.minAy ?? 28 },
   ];
   for (const item of items) {
     const value = values[item.idx];
@@ -309,8 +303,8 @@ function annotateExtrema(layout, times, values, p, unit) {
       x: times[item.idx],
       y: value,
       xref: "x",
-      yref: "y",
-      text: `${item.label} ${value.toFixed(1)}${unit}`,
+      yref,
+      text: `${item.label} ${value.toFixed(digits)}${unit}`,
       showarrow: true,
       arrowhead: 2,
       arrowcolor: item.color,

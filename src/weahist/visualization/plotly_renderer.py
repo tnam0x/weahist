@@ -169,6 +169,16 @@ class PlotlyRenderer:
                 secondary_y=True,
                 hovertemplate="<b>%{y:.0f}%%</b><extra>Humidity</extra>",
             )
+            self._annotate_extrema(
+                fig,
+                local[humid_col],
+                p,
+                unit="%",
+                secondary_y=True,
+                value_fmt=".0f",
+                colors=(p.humidity_line, p.humidity_line),
+                offsets=(-22, 22),
+            )
 
         if has_aqi:
             top = aqi_max(local)
@@ -275,19 +285,30 @@ class PlotlyRenderer:
         return fig
 
     @staticmethod
-    def _annotate_extrema(fig: Any, series: pd.Series, p: ThemePalette, *, unit: str) -> None:
+    def _annotate_extrema(
+        fig: Any,
+        series: pd.Series,
+        p: ThemePalette,
+        *,
+        unit: str,
+        secondary_y: bool = False,
+        value_fmt: str = ".1f",
+        colors: tuple[str, str] | None = None,
+        offsets: tuple[int, int] = (-28, 28),
+    ) -> None:
         clean = series.dropna()
         if clean.empty:
             return
+        max_color, min_color = colors if colors is not None else (p.temp_line, p.humidity_line)
         for label, idx, color, ay in (
-            ("max", clean.idxmax(), p.temp_line, -28),
-            ("min", clean.idxmin(), p.humidity_line, 28),
+            ("max", clean.idxmax(), max_color, offsets[0]),
+            ("min", clean.idxmin(), min_color, offsets[1]),
         ):
             value = float(clean.loc[idx])
             fig.add_annotation(
                 x=idx,
                 y=value,
-                text=f"{label} {value:.1f}{unit}",
+                text=f"{label} {value:{value_fmt}}{unit}",
                 showarrow=True,
                 arrowhead=2,
                 arrowcolor=color,
@@ -299,6 +320,7 @@ class PlotlyRenderer:
                 borderwidth=1,
                 row=1,
                 col=1,
+                secondary_y=secondary_y,
             )
 
     @staticmethod
