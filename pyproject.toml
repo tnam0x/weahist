@@ -1,0 +1,57 @@
+[project]
+name = "weahist"
+version = "0.1.0"
+description = "Historical weather and air-quality fetcher and visualizer (Open-Meteo)."
+readme = "README.md"
+authors = [
+    { name = "Nam Tran Xuan", email = "NamTX12@fpt.com" }
+]
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.136.1",
+    "httpx>=0.28.1",
+    "matplotlib>=3.10.9",
+    "pandas>=3.0.2",
+    "plotly>=6.7.0",
+    "pyarrow>=24.0.0",
+    "pydantic>=2.13.3",
+    "pydantic-settings>=2.14.0",
+    "typer>=0.25.1",
+    "uvicorn>=0.46.0",
+]
+
+[project.scripts]
+weahist = "weahist.cli:app"
+
+[build-system]
+requires = ["uv_build>=0.11.8,<0.12.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "mypy>=1.20.2",
+    "pandas-stubs>=3.0.0.260204",
+    "pytest>=9.0.3",
+    "respx>=0.23.1",
+    "ruff>=0.15.12",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "N", "SIM", "RET"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+files = ["src/weahist"]
+
+[[tool.mypy.overrides]]
+module = ["plotly.*", "matplotlib.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

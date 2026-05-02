@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Weather History</title>
+    <link rel="stylesheet" href="./styles.css" />
+    <script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
+  </head>
+  <body>
+    <div id="error-banner" class="error-banner" role="alert" hidden>
+      <span id="error-banner-text"></span>
+      <button
+        type="button"
+        id="error-banner-close"
+        class="error-banner-close"
+        aria-label="Dismiss"
+      >
+        ✕
+      </button>
+    </div>
+
+    <header class="app-header">
+      <h1 class="brand">🌤 Weather History</h1>
+    </header>
+
+    <section class="controls">
+      <div class="field">
+        <label for="location-input">Location</label>
+        <div class="autocomplete">
+          <input
+            id="location-input"
+            type="text"
+            placeholder="Hanoi, Vietnam"
+            autocomplete="off"
+            spellcheck="false"
+          />
+          <ul id="location-suggestions" class="suggestions" hidden></ul>
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="range-select">Time range</label>
+        <select id="range-select">
+          <option value="1d">Last 24 hours</option>
+          <option value="3d">Last 3 days</option>
+          <option value="1w" selected>Last 7 days</option>
+          <option value="2w">Last 2 weeks</option>
+          <option value="1m">Last 30 days</option>
+          <option value="3m">Last 3 months</option>
+          <option value="6m">Last 6 months</option>
+          <option value="1y">Last 1 year</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label for="theme-select">Theme</label>
+        <select id="theme-select">
+          <option value="system">🖥 System</option>
+          <option value="light">☀ Light</option>
+          <option value="dark">🌙 Dark</option>
+        </select>
+      </div>
+    </section>
+
+    <main>
+      <div id="status" class="status"></div>
+      <div class="chart-wrap">
+        <div id="chart" class="chart"></div>
+        <div id="loading" class="loading-overlay" hidden aria-live="polite">
+          <div class="spinner" role="status" aria-label="Loading"></div>
+          <div class="loading-text">Fetching data…</div>
+        </div>
+      </div>
+      <div id="summary" class="summary" hidden></div>
+    </main>
+
+    <footer class="app-footer">
+      <div>
+        Source:
+        <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a>
+        · <a href="#" id="reset-prefs">Reset preferences</a>
+      </div>
+      <div class="author">
+        Made with <span class="heart" aria-label="love">❤️</span> by
+        <strong>tnam0x</strong> ·
+        <a href="mailto:namtran4194@gmail.com">namtran4194@gmail.com</a>
+      </div>
+    </footer>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
