@@ -23,5 +23,9 @@ class CacheError(WeahistError):
     """Cache read/write failure."""
 
 
+class InvalidRangeError(WeahistError):
+    """User-supplied date range is invalid (e.g. start > end, end in the future)."""
+
+
 class RenderError(WeahistError):
     """Visualization renderer failed to produce output."""

@@ -9,6 +9,7 @@ from typing import Annotated
 
 import typer
 
+from weahist.errors import InvalidRangeError
 from weahist.models import Granularity
 from weahist.services.history import WeatherHistoryService
 from weahist.visualization.base import Renderer
@@ -24,7 +25,19 @@ def _default_start() -> date:
 
 
 def _default_end() -> date:
-    return date.today() - timedelta(days=1)
+    return date.today()
+
+
+def _resolve_range(start: datetime | None, end: datetime | None) -> tuple[date, date]:
+    """Return concrete (start, end) dates, validating against today."""
+    start_d: date = start.date() if start else _default_start()
+    end_d: date = end.date() if end else _default_end()
+    today = date.today()
+    if start_d > end_d:
+        raise typer.BadParameter(f"start ({start_d}) must be on or before end ({end_d})")
+    if end_d > today:
+        raise typer.BadParameter(f"end ({end_d}) must not be in the future (today is {today})")
+    return start_d, end_d
 
 
 def _renderer_for(name: str) -> Renderer:
@@ -52,12 +65,14 @@ def fetch(
     no_cache: Annotated[bool, typer.Option("--no-cache")] = False,
 ) -> None:
     """Fetch weather + AQI history and print a summary."""
-    start_d: date = start.date() if start else _default_start()
-    end_d: date = end.date() if end else _default_end()
+    start_d, end_d = _resolve_range(start, end)
     service = WeatherHistoryService()
-    query, df = service.get_history(
-        location, start=start_d, end=end_d, granularity=granularity, use_cache=not no_cache
-    )
+    try:
+        query, df = service.get_history(
+            location, start=start_d, end=end_d, granularity=granularity, use_cache=not no_cache
+        )
+    except InvalidRangeError as exc:
+        raise typer.BadParameter(str(exc)) from exc
     typer.echo(
         f"Location: {query.location.name} ({query.location.latitude:.3f},"
         f" {query.location.longitude:.3f}, tz={query.location.timezone})"
@@ -82,11 +97,15 @@ def plot(
     out: Annotated[Path | None, typer.Option(help="Output path (auto-named if omitted).")] = None,
 ) -> None:
     """Fetch and render a chart to PNG (matplotlib) or HTML (plotly)."""
-    start_d: date = start.date() if start else _default_start()
-    end_d: date = end.date() if end else _default_end()
+    start_d, end_d = _resolve_range(start, end)
     rndr = _renderer_for(renderer)
     service = WeatherHistoryService()
-    query, df = service.get_history(location, start=start_d, end=end_d, granularity=granularity)
+    try:
+        query, df = service.get_history(
+            location, start=start_d, end=end_d, granularity=granularity
+        )
+    except InvalidRangeError as exc:
+        raise typer.BadParameter(str(exc)) from exc
 
     output = out or Path(
         f"weahist_{query.location.name.replace(' ', '_')}"

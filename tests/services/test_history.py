@@ -1,8 +1,9 @@
-from datetime import date
+from datetime import date, timedelta
 
 import pandas as pd
 import pytest
 
+from weahist.errors import InvalidRangeError
 from weahist.models import HistoryQuery, Location
 from weahist.services.history import WeatherHistoryService
 
@@ -102,3 +103,56 @@ def test_cache_hit_skips_clients(settings) -> None:
     q2, df2 = svc.get_history("Hanoi", date(2025, 4, 1), date(2025, 4, 1), "hourly")
     assert q1 == q2
     assert df1.equals(df2)
+
+
+def test_invalid_range_rejected(service) -> None:
+    with pytest.raises(InvalidRangeError):
+        service.get_history("Hanoi", date(2025, 4, 2), date(2025, 4, 1), "hourly")
+    future = date.today() + timedelta(days=5)
+    with pytest.raises(InvalidRangeError):
+        service.get_history("Hanoi", date.today(), future, "hourly")
+
+
+class _RecordingArchive:
+    def __init__(self) -> None:
+        self.calls: list[tuple[date, date]] = []
+
+    def fetch(self, loc, start, end, gran) -> pd.DataFrame:
+        self.calls.append((start, end))
+        idx = pd.to_datetime([f"{start.isoformat()}T00:00Z"], utc=True).rename("time")
+        return pd.DataFrame({"temperature_2m": [10.0], "relative_humidity_2m": [50]}, index=idx)
+
+
+class _RecordingForecast:
+    def __init__(self) -> None:
+        self.calls: list[tuple[date, date]] = []
+
+    def fetch(self, loc, start, end, gran) -> pd.DataFrame:
+        self.calls.append((start, end))
+        idx = pd.to_datetime([f"{start.isoformat()}T00:00Z"], utc=True).rename("time")
+        return pd.DataFrame({"temperature_2m": [20.0], "relative_humidity_2m": [60]}, index=idx)
+
+
+def test_hybrid_uses_archive_and_forecast(settings) -> None:
+    archive = _RecordingArchive()
+    forecast = _RecordingForecast()
+    svc = WeatherHistoryService(
+        settings=settings,
+        cache=_FakeCache(),
+        geocoder=_FakeGeocoder(),
+        archive=archive,
+        forecast=forecast,  # type: ignore[arg-type]
+        air_quality=_FakeAQI(empty=True),
+    )
+    today = date.today()
+    start = today - timedelta(days=10)
+    _, df = svc.get_history("Hanoi", start, today, "hourly")
+    assert len(archive.calls) == 1
+    assert len(forecast.calls) == 1
+    a_start, a_end = archive.calls[0]
+    f_start, f_end = forecast.calls[0]
+    assert a_start == start
+    assert a_end == today - timedelta(days=settings.forecast_tail_days + 1)
+    assert f_start == today - timedelta(days=settings.forecast_tail_days)
+    assert f_end == today
+    assert not df.empty

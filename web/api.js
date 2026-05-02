@@ -3,7 +3,14 @@
 
 const GEOCODING_URL = "https://geocoding-api.open-meteo.com/v1/search";
 const ARCHIVE_URL = "https://archive-api.open-meteo.com/v1/archive";
+const FORECAST_URL = "https://api.open-meteo.com/v1/forecast";
 const AIR_QUALITY_URL = "https://air-quality-api.open-meteo.com/v1/air-quality";
+
+// Number of trailing days to fetch from the forecast endpoint instead of the
+// archive endpoint. The archive (ERA5/IFS reanalysis) typically lags 1–3 days,
+// so we fall back to the forecast endpoint (which has live observations +
+// model output) for that window. Forecast covers today and a few past days.
+const FORECAST_TAIL_DAYS = 3;
 
 const HOURLY_WEATHER = ["temperature_2m", "relative_humidity_2m"];
 const DAILY_WEATHER = [
@@ -25,11 +32,10 @@ const RANGE_DAYS = {
   "1y": 365,
 };
 
-/** Resolve a preset key into { start, end, granularity }. End = yesterday. */
+/** Resolve a preset key into { start, end, granularity }. End = today. */
 export function resolveRange(rangeKey) {
   const days = RANGE_DAYS[rangeKey] ?? RANGE_DAYS["1w"];
   const end = new Date();
-  end.setDate(end.getDate() - 1);
   const start = new Date(end);
   start.setDate(start.getDate() - (days - 1));
   return {
@@ -44,6 +50,26 @@ function ymd(d) {
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
+}
+
+/** YYYY-MM-DD for `today - n` days. */
+function ymdDaysAgo(n) {
+  const d = new Date();
+  d.setDate(d.getDate() - n);
+  return ymd(d);
+}
+
+/** Lexicographic min/max for "YYYY-MM-DD" date strings. */
+function dateMin(a, b) {
+  return a < b ? a : b;
+}
+function dateMax(a, b) {
+  return a > b ? a : b;
+}
+function dateAddDays(s, n) {
+  const d = new Date(`${s}T00:00:00`);
+  d.setDate(d.getDate() + n);
+  return ymd(d);
 }
 
 // ---- HTTP ------------------------------------------------------------
@@ -84,8 +110,12 @@ export async function geocode(name, { count = 6, signal } = {}) {
   }));
 }
 
-// ---- Archive (weather) ----------------------------------------------
-async function fetchArchive(location, start, end, granularity, signal) {
+// ---- Weather: hybrid archive + forecast -----------------------------
+//
+// The archive endpoint lags ~1–3 days; the forecast endpoint covers
+// today and a few past days using live observations. We split the range
+// at `today - FORECAST_TAIL_DAYS` and merge the two responses.
+async function fetchOpenMeteo(url, location, start, end, granularity, signal) {
   const params = {
     latitude: location.latitude,
     longitude: location.longitude,
@@ -101,12 +131,64 @@ async function fetchArchive(location, start, end, granularity, signal) {
     params.daily = DAILY_WEATHER.join(",");
     blockKey = "daily";
   }
-  const data = await getJson(ARCHIVE_URL, params, signal);
+  const data = await getJson(url, params, signal);
   const block = data[blockKey];
   if (!block || !Array.isArray(block.time)) {
-    throw new Error(`archive response missing ${blockKey} block`);
+    throw new Error(`response missing ${blockKey} block`);
   }
   return { times: block.time, columns: block };
+}
+
+async function fetchWeather(location, start, end, granularity, signal) {
+  const today = ymd(new Date());
+  // Forecast covers `forecastStart..today` (and a bit beyond, but we cap at end).
+  const forecastStart = ymdDaysAgo(FORECAST_TAIL_DAYS);
+  const archiveEnd = dateAddDays(forecastStart, -1); // day before forecast window
+
+  const useArchive = start <= archiveEnd;
+  const useForecast = end >= forecastStart;
+
+  const tasks = [];
+  if (useArchive) {
+    const aEnd = dateMin(end, archiveEnd);
+    tasks.push(
+      fetchOpenMeteo(ARCHIVE_URL, location, start, aEnd, granularity, signal),
+    );
+  }
+  if (useForecast) {
+    const fStart = dateMax(start, forecastStart);
+    const fEnd = dateMin(end, today);
+    tasks.push(
+      fetchOpenMeteo(FORECAST_URL, location, fStart, fEnd, granularity, signal),
+    );
+  }
+  const parts = await Promise.all(tasks);
+  return mergeBlocks(parts, granularity);
+}
+
+/** Concatenate multiple { times, columns } blocks, sorted & deduped by time. */
+function mergeBlocks(parts, granularity) {
+  const cols = granularity === "hourly" ? HOURLY_WEATHER : DAILY_WEATHER;
+  const byTime = new Map();
+  for (const part of parts) {
+    for (let i = 0; i < part.times.length; i++) {
+      const t = part.times[i];
+      const row = byTime.get(t) || {};
+      for (const c of cols) {
+        const v = part.columns[c]?.[i];
+        // Prefer the first non-null value seen (archive wins where it exists).
+        if (row[c] == null && v != null) row[c] = v;
+        else if (!(c in row)) row[c] = v ?? null;
+      }
+      byTime.set(t, row);
+    }
+  }
+  const times = [...byTime.keys()].sort();
+  const columns = { time: times };
+  for (const c of cols) {
+    columns[c] = times.map((t) => byTime.get(t)[c] ?? null);
+  }
+  return { times, columns };
 }
 
 // ---- Air quality (always hourly upstream; resampled to daily if needed)
@@ -181,7 +263,7 @@ export async function fetchHistory(location, rangeKey, { signal } = {}) {
 
   // Fetch in parallel; AQI failures are absorbed inside fetchAirQuality.
   const [weather, aqi] = await Promise.all([
-    fetchArchive(location, start, end, granularity, signal),
+    fetchWeather(location, start, end, granularity, signal),
     fetchAirQuality(location, start, end, granularity, signal),
   ]);
 

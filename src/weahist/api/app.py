@@ -48,7 +48,7 @@ def _resolve_range(range_key: str | None) -> tuple[date, date, Granularity]:
     if key not in _RANGE_DAYS:
         raise HTTPException(status_code=400, detail=f"unknown range: {key}")
     days = _RANGE_DAYS[key]
-    end = date.today() - timedelta(days=1)
+    end = date.today()
     start = end - timedelta(days=days - 1)
     granularity: Granularity = "daily" if days > 30 else "hourly"
     return start, end, granularity
