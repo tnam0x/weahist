@@ -137,6 +137,7 @@ function pickSuggestion(idx) {
   selectedLocation = r;
   locInput.value = r.label;
   prefs.location = r.label;
+  prefs.locationResolved = r;
   savePrefs(prefs);
   hideSuggestions();
   refreshChart();
@@ -151,6 +152,7 @@ locInput.addEventListener("keydown", (e) => {
   if (suggestionsEl.hidden) {
     if (e.key === "Enter") {
       prefs.location = locInput.value.trim();
+      delete prefs.locationResolved;
       savePrefs(prefs);
       selectedLocation = null;
       refreshChart();
@@ -170,6 +172,7 @@ locInput.addEventListener("keydown", (e) => {
     if (acActive >= 0) pickSuggestion(acActive);
     else {
       prefs.location = locInput.value.trim();
+      delete prefs.locationResolved;
       savePrefs(prefs);
       hideSuggestions();
       selectedLocation = null;
@@ -232,7 +235,10 @@ function setLoading(on) {
 // ---- Chart fetch + render --------------------------------------------
 let inFlight = null;
 let lastHistory = null; // cached for cheap theme re-renders
-let selectedLocation = null; // resolved Location from autocomplete
+let selectedLocation =
+  prefs.locationResolved && prefs.locationResolved.label === prefs.location
+    ? prefs.locationResolved
+    : null;
 
 function rangeLabel(key) {
   const opt = rangeSelect.querySelector(`option[value="${key}"]`);
@@ -291,10 +297,20 @@ async function refreshChart() {
   try {
     let location = selectedLocation;
     if (!location || location.label !== locText) {
-      const matches = await geocode(locText, { count: 1, signal: ctrl.signal });
+      let matches = await geocode(locText, { count: 1, signal: ctrl.signal });
+      // Saved labels can include admin1 (e.g. "Hanoi, Hanoi, Vietnam")
+      // which the geocoder doesn't match — retry with the leading segment.
+      if (matches.length === 0 && locText.includes(",")) {
+        const head = locText.split(",")[0].trim();
+        if (head) {
+          matches = await geocode(head, { count: 1, signal: ctrl.signal });
+        }
+      }
       if (matches.length === 0) throw new Error(`No matches for "${locText}"`);
       location = matches[0];
       selectedLocation = location;
+      prefs.locationResolved = location;
+      savePrefs(prefs);
     }
     const history = await fetchHistory(location, prefs.range, {
       signal: ctrl.signal,
