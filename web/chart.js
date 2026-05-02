@@ -33,19 +33,30 @@ export function buildFigure(history, theme) {
     font: { color: p.text },
     hovermode: "x unified",
     margin: isNarrow
-      ? { t: 80, r: 30, b: 50, l: 50 }
+      ? { t: 70, r: 55, b: 80, l: 50 }
       : { t: 110, r: 70, b: 60, l: 70 },
-    legend: {
-      orientation: "h",
-      yanchor: "bottom",
-      y: isNarrow ? 1.0 : 1.04,
-      xanchor: isNarrow ? "left" : "right",
-      x: isNarrow ? 0 : 1.0,
-      bgcolor: p.legendBg,
-      bordercolor: p.border,
-      borderwidth: 1,
-      font: { color: p.text, size: isNarrow ? 10 : 12 },
-    },
+    legend: isNarrow
+      ? {
+          orientation: "h",
+          yanchor: "top",
+          y: -0.18,
+          xanchor: "left",
+          x: 0,
+          bgcolor: "rgba(0,0,0,0)",
+          borderwidth: 0,
+          font: { color: p.text, size: 10 },
+        }
+      : {
+          orientation: "h",
+          yanchor: "bottom",
+          y: 1.04,
+          xanchor: "right",
+          x: 1.0,
+          bgcolor: p.legendBg,
+          bordercolor: p.border,
+          borderwidth: 1,
+          font: { color: p.text },
+        },
     shapes: [],
     annotations: [],
   };
@@ -98,7 +109,7 @@ export function buildFigure(history, theme) {
       anchor: "x",
       overlaying: "y",
       side: "right",
-      title: { text: isNarrow ? "RH (%)" : "Humidity (%)", font: { color: p.text, size: isNarrow ? 11 : 13 } },
+      title: { text: "Humidity (%)", font: { color: p.text, size: isNarrow ? 11 : 13 } },
       showgrid: false,
     };
     layout.xaxis2 = {
@@ -112,7 +123,7 @@ export function buildFigure(history, theme) {
       ...axisCommon,
       anchor: "x2",
       domain: [0, 0.40],
-      title: { text: isNarrow ? "AQI" : "US AQI (0–500)", font: { color: p.text, size: isNarrow ? 11 : 13 } },
+      title: { text: isNarrow ? "AQI" : "AQI (0–500)", font: { color: p.text, size: isNarrow ? 11 : 13 } },
     };
   } else {
     layout.xaxis = {
@@ -132,7 +143,7 @@ export function buildFigure(history, theme) {
       anchor: "x",
       overlaying: "y",
       side: "right",
-      title: { text: isNarrow ? "RH (%)" : "Humidity (%)", font: { color: p.text, size: isNarrow ? 11 : 13 } },
+      title: { text: "Humidity (%)", font: { color: p.text, size: isNarrow ? 11 : 13 } },
       showgrid: false,
     };
   }
@@ -147,7 +158,7 @@ export function buildFigure(history, theme) {
     data.push({
       type: "scatter",
       mode: "lines",
-      name: "Temperature (°C)",
+      name: isNarrow ? "Temp" : "Temperature (°C)",
       x: times,
       y: weather[tempCol],
       xaxis: "x",
@@ -163,7 +174,7 @@ export function buildFigure(history, theme) {
     data.push({
       type: "scatter",
       mode: "lines",
-      name: "Relative humidity (%)",
+      name: isNarrow ? "Humidity" : "Relative humidity (%)",
       x: times,
       y: weather[humidCol],
       xaxis: "x",
@@ -221,7 +232,7 @@ export function buildFigure(history, theme) {
     data.push({
       type: "scatter",
       mode: "lines",
-      name: "US AQI",
+      name: "AQI",
       x: times,
       y: aqi.us_aqi,
       xaxis: "x2",

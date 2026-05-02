@@ -113,7 +113,7 @@ a:hover {
 
 .controls {
   display: grid;
-  grid-template-columns: 2fr 1fr 1fr;
+  grid-template-columns: 1fr auto;
   gap: 10px;
   padding: 10px 24px;
   background: var(--surface);
@@ -121,6 +121,24 @@ a:hover {
   position: sticky;
   top: 65px;
   z-index: 9;
+}
+
+.theme-select {
+  padding: 5px 10px;
+  font-size: 13px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-family: inherit;
+  height: 30px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.theme-select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--focus-ring);
 }
 
 .field {
@@ -320,14 +338,22 @@ body.is-loading #reset-prefs {
 
 @media (max-width: 640px) {
   .controls {
-    grid-template-columns: 1fr;
+    grid-template-columns: 1fr auto;
     top: 60px;
   }
   .app-header {
-    padding: 12px 16px;
+    padding: 12px 8px;
+  }
+  .theme-select {
+    font-size: 12px;
+    height: 28px;
+    padding: 3px 8px;
   }
   main {
-    padding: 12px 16px 24px;
+    padding: 12px 8px 24px;
+  }
+  .chart-wrap {
+    padding: 4px;
   }
   .chart {
     min-height: 540px;

@@ -216,7 +216,7 @@ class PlotlyRenderer:
             fig.add_scatter(
                 x=local.index,
                 y=local["us_aqi"],
-                name="US AQI",
+                name="AQI",
                 mode="lines",
                 line={"color": p.aqi_line, "width": 2},
                 customdata=categories,
@@ -226,7 +226,7 @@ class PlotlyRenderer:
             )
             self._annotate_aqi_max(fig, local["us_aqi"], p)
             fig.update_yaxes(
-                title_text="US AQI (0–500)", range=[0, top], row=2, col=1
+                title_text="AQI (0–500)", range=[0, top], row=2, col=1
             )
             fig.update_xaxes(
                 title_text=f"Time ({query.location.timezone})", row=2, col=1

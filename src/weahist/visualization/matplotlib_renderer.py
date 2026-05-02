@@ -128,11 +128,11 @@ class MatplotlibRenderer:
                 zorder=2,
             )
             ax_aqi.plot(
-                local.index, local["us_aqi"], color="black", linewidth=1.5, label="US AQI"
+                local.index, local["us_aqi"], color="black", linewidth=1.5, label="AQI"
             )
             self._annotate_aqi_max(ax_aqi, local["us_aqi"])
             ax_aqi.set_ylim(0, top)
-            ax_aqi.set_ylabel("US AQI (0–500)")
+            ax_aqi.set_ylabel("AQI (0–500)")
             ax_aqi.set_xlabel(f"Time ({query.location.timezone})")
             ax_aqi.grid(True, axis="x", alpha=0.25)
             bottom_axis = ax_aqi
