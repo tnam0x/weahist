@@ -310,7 +310,7 @@ function annotateExtrema(layout, times, values, p, unit, opts = {}) {
   const compact = !!opts.compact;
   const fontSize = compact ? 9 : 10;
   const colorMax = opts.color || p.tempLine;
-  const colorMin = opts.color || p.humidityLine;
+  const colorMin = opts.color || p.tempLine;
   const items = [
     { label: "max", idx: indices.maxIdx, color: colorMax, ay: opts.maxAy ?? -28 },
     { label: "min", idx: indices.minIdx, color: colorMin, ay: opts.minAy ?? 28 },

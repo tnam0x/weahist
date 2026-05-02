@@ -299,7 +299,7 @@ class PlotlyRenderer:
         clean = series.dropna()
         if clean.empty:
             return
-        max_color, min_color = colors if colors is not None else (p.temp_line, p.humidity_line)
+        max_color, min_color = colors if colors is not None else (p.temp_line, p.temp_line)
         for label, idx, color, ay in (
             ("max", clean.idxmax(), max_color, offsets[0]),
             ("min", clean.idxmin(), min_color, offsets[1]),

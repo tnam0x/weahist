@@ -163,7 +163,7 @@ class MatplotlibRenderer:
         *,
         unit: str,
         value_fmt: str = ".1f",
-        colors: tuple[str, str] = ("darkred", "navy"),
+        colors: tuple[str, str] = ("darkred", "darkred"),
     ) -> None:
         clean = series.dropna()
         if clean.empty:
