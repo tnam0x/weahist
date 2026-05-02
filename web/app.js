@@ -256,10 +256,14 @@ async function rerenderChartIfData() {
 }
 
 function plotlyConfig() {
+  const hasHover =
+    typeof window !== "undefined" &&
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(hover: hover)").matches;
   return {
     responsive: true,
     displaylogo: false,
-    displayModeBar: "hover",
+    displayModeBar: hasHover ? "hover" : false,
     modeBarButtonsToRemove: ["lasso2d", "select2d"],
   };
 }
@@ -336,7 +340,8 @@ function renderSummary(history) {
     items.push(["Min temp", `${Math.min(...temps).toFixed(1)} °C`]);
   }
   if (aqis.length) {
-    items.push(["Peak AQI", `${Math.max(...aqis).toFixed(0)}`]);
+    items.push(["Max AQI", `${Math.max(...aqis).toFixed(0)}`]);
+    items.push(["Min AQI", `${Math.min(...aqis).toFixed(0)}`]);
     items.push(["AQI coverage", `${(history.aqiCoverage * 100).toFixed(0)}%`]);
   }
   summaryEl.innerHTML = items
@@ -350,3 +355,22 @@ function renderSummary(history) {
 
 // Initial render.
 refreshChart();
+
+// Re-render chart on viewport size / orientation changes so the
+// mobile vs. desktop layout switches correctly.
+let resizeTimer = null;
+const NARROW_BREAKPOINT = 640;
+let wasNarrow = window.innerWidth < NARROW_BREAKPOINT;
+function onViewportChange() {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => {
+    const isNarrow = window.innerWidth < NARROW_BREAKPOINT;
+    // Only re-render when crossing the breakpoint to avoid thrashing.
+    if (isNarrow !== wasNarrow) {
+      wasNarrow = isNarrow;
+      rerenderChartIfData();
+    }
+  }, 150);
+}
+window.addEventListener("resize", onViewportChange);
+window.addEventListener("orientationchange", onViewportChange);

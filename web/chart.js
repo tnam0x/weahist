@@ -12,6 +12,8 @@ import { paletteFor } from "./theme.js";
 export function buildFigure(history, theme) {
   const p = paletteFor(theme);
   const { location, start, end, granularity, times, weather, aqi } = history;
+  const isNarrow =
+    typeof window !== "undefined" && window.innerWidth < 640;
 
   const tempCol =
     "temperature_2m" in weather
@@ -30,17 +32,19 @@ export function buildFigure(history, theme) {
     plot_bgcolor: p.plotBg,
     font: { color: p.text },
     hovermode: "x unified",
-    margin: { t: 110, r: 70, b: 60, l: 70 },
+    margin: isNarrow
+      ? { t: 80, r: 30, b: 50, l: 50 }
+      : { t: 110, r: 70, b: 60, l: 70 },
     legend: {
       orientation: "h",
       yanchor: "bottom",
-      y: 1.04,
-      xanchor: "right",
-      x: 1.0,
+      y: isNarrow ? 1.0 : 1.04,
+      xanchor: isNarrow ? "left" : "right",
+      x: isNarrow ? 0 : 1.0,
       bgcolor: p.legendBg,
       bordercolor: p.border,
       borderwidth: 1,
-      font: { color: p.text },
+      font: { color: p.text, size: isNarrow ? 10 : 12 },
     },
     shapes: [],
     annotations: [],
@@ -60,7 +64,7 @@ export function buildFigure(history, theme) {
     xanchor: "left",
     y: 0.97,
     yanchor: "top",
-    font: { color: p.text },
+    font: { color: p.text, size: isNarrow ? 13 : 17 },
   };
 
   const data = [];
@@ -87,14 +91,14 @@ export function buildFigure(history, theme) {
       ...axisCommon,
       anchor: "x",
       domain: [0.52, 1.0],
-      title: { text: "Temperature (°C)", font: { color: p.text } },
+      title: { text: isNarrow ? "Temp (°C)" : "Temperature (°C)", font: { color: p.text, size: isNarrow ? 11 : 13 } },
     };
     layout.yaxis2 = {
       ...axisCommon,
       anchor: "x",
       overlaying: "y",
       side: "right",
-      title: { text: "Humidity (%)", font: { color: p.text } },
+      title: { text: isNarrow ? "RH (%)" : "Humidity (%)", font: { color: p.text, size: isNarrow ? 11 : 13 } },
       showgrid: false,
     };
     layout.xaxis2 = {
@@ -102,33 +106,33 @@ export function buildFigure(history, theme) {
       anchor: "y3",
       domain: [0, 1],
       matches: "x",
-      title: { text: tzAxisTitle, font: { color: p.text } },
+      title: { text: tzAxisTitle, font: { color: p.text, size: isNarrow ? 11 : 13 } },
     };
     layout.yaxis3 = {
       ...axisCommon,
       anchor: "x2",
       domain: [0, 0.40],
-      title: { text: "US AQI (0–500)", font: { color: p.text } },
+      title: { text: isNarrow ? "AQI" : "US AQI (0–500)", font: { color: p.text, size: isNarrow ? 11 : 13 } },
     };
   } else {
     layout.xaxis = {
       ...axisCommon,
       anchor: "y",
       domain: [0, 1],
-      title: { text: tzAxisTitle, font: { color: p.text } },
+      title: { text: tzAxisTitle, font: { color: p.text, size: isNarrow ? 11 : 13 } },
     };
     layout.yaxis = {
       ...axisCommon,
       anchor: "x",
       domain: [0, 1],
-      title: { text: "Temperature (°C)", font: { color: p.text } },
+      title: { text: isNarrow ? "Temp (°C)" : "Temperature (°C)", font: { color: p.text, size: isNarrow ? 11 : 13 } },
     };
     layout.yaxis2 = {
       ...axisCommon,
       anchor: "x",
       overlaying: "y",
       side: "right",
-      title: { text: "Humidity (%)", font: { color: p.text } },
+      title: { text: isNarrow ? "RH (%)" : "Humidity (%)", font: { color: p.text, size: isNarrow ? 11 : 13 } },
       showgrid: false,
     };
   }
@@ -151,7 +155,7 @@ export function buildFigure(history, theme) {
       line: { color: p.tempLine, width: 2 },
       hovertemplate: "<b>%{y:.1f} °C</b><extra>Temperature</extra>",
     });
-    annotateExtrema(layout, times, weather[tempCol], p, "°C");
+    annotateExtrema(layout, times, weather[tempCol], p, "°C", { compact: isNarrow });
   }
 
   // Humidity trace.
@@ -171,8 +175,9 @@ export function buildFigure(history, theme) {
       yref: "y2",
       color: p.humidityLine,
       digits: 0,
-      maxAy: -22,
-      minAy: 22,
+      maxAy: -36,
+      minAy: 36,
+      compact: isNarrow,
     });
   }
 
@@ -202,11 +207,11 @@ export function buildFigure(history, theme) {
         yref: "y3",
         x: 0.005,
         y: (band.lower + upper) / 2,
-        text: band.label,
+        text: isNarrow ? band.short : band.label,
         showarrow: false,
         xanchor: "left",
         yanchor: "middle",
-        font: { size: 10, color: p.textMute },
+        font: { size: isNarrow ? 9 : 10, color: p.textMute },
       });
     });
 
@@ -226,7 +231,7 @@ export function buildFigure(history, theme) {
       hovertemplate: "<b>AQI %{y:.0f}</b> · %{customdata}<extra></extra>",
     });
 
-    annotateAqiExtrema(layout, times, aqi.us_aqi, p);
+    annotateAqiExtrema(layout, times, aqi.us_aqi, p, { compact: isNarrow });
   }
 
   // Weekend shading + day separators (pushed last so they overlay AQI bands).
@@ -291,6 +296,8 @@ function annotateExtrema(layout, times, values, p, unit, opts = {}) {
   if (!indices) return;
   const yref = opts.yref || "y";
   const digits = opts.digits ?? 1;
+  const compact = !!opts.compact;
+  const fontSize = compact ? 9 : 10;
   const colorMax = opts.color || p.tempLine;
   const colorMin = opts.color || p.humidityLine;
   const items = [
@@ -310,7 +317,7 @@ function annotateExtrema(layout, times, values, p, unit, opts = {}) {
       arrowcolor: item.color,
       ax: 0,
       ay: item.ay,
-      font: { size: 10, color: item.color },
+      font: { size: fontSize, color: item.color },
       bgcolor: p.annotationBg,
       bordercolor: item.color,
       borderwidth: 1,
@@ -318,27 +325,32 @@ function annotateExtrema(layout, times, values, p, unit, opts = {}) {
   }
 }
 
-function annotateAqiExtrema(layout, times, values, p) {
+function annotateAqiExtrema(layout, times, values, p, opts = {}) {
   const indices = extremaIndices(values);
   if (!indices) return;
+  const compact = !!opts.compact;
+  const fontSize = compact ? 9 : 10;
   for (const [label, idx, ay] of [
     ["max", indices.maxIdx, -24],
     ["min", indices.minIdx, 24],
   ]) {
     const value = values[idx];
     const category = aqiCategory(value);
+    const text = compact
+      ? `${label} ${value.toFixed(0)}`
+      : `${label} AQI ${value.toFixed(0)} · ${category}`;
     layout.annotations.push({
       x: times[idx],
       y: value,
       xref: "x2",
       yref: "y3",
-      text: `${label} AQI ${value.toFixed(0)} · ${category}`,
+      text,
       showarrow: true,
       arrowhead: 2,
       arrowcolor: p.aqiLine,
       ax: 0,
       ay,
-      font: { size: 10, color: p.aqiLine },
+      font: { size: fontSize, color: p.aqiLine },
       bgcolor: p.annotationBg,
       bordercolor: p.aqiLine,
       borderwidth: 1,
