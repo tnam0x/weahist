@@ -207,16 +207,16 @@ main {
 }
 
 .chart {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 8px;
   min-height: 600px;
-  padding: 8px;
-  box-shadow: var(--shadow);
 }
 
 .chart-wrap {
   position: relative;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px;
+  box-shadow: var(--shadow);
 }
 
 .loading-overlay {

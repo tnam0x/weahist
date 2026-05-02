@@ -30,7 +30,7 @@ export function buildFigure(history, theme) {
     plot_bgcolor: p.plotBg,
     font: { color: p.text },
     hovermode: "x unified",
-    margin: { t: 110, r: 50, b: 60, l: 70 },
+    margin: { t: 110, r: 70, b: 60, l: 70 },
     legend: {
       orientation: "h",
       yanchor: "bottom",
