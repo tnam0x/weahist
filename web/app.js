@@ -3,7 +3,7 @@
 
 import { geocode, fetchHistory } from "./api.js";
 import { aqiBand } from "./aqi.js";
-import { buildFigure } from "./chart.js";
+import { NARROW_BREAKPOINT, buildCharts, visibleAqiBands } from "./chart.js";
 
 const PREFS_KEY = "weahist.prefs.v1";
 const DEFAULTS = {
@@ -64,12 +64,32 @@ mql.addEventListener("change", () => {
 });
 applyTheme();
 
+// ---- Chart cards --------------------------------------------------------
+const CHART_KEYS = ["temperature", "humidity", "aqi"];
+const cards = Object.fromEntries(
+  CHART_KEYS.map((key) => {
+    const card = document.querySelector(`.chart-card[data-chart="${key}"]`);
+    return [
+      key,
+      {
+        card,
+        chart: card.querySelector(".chart"),
+        wrap: card.querySelector(".chart-wrap"),
+        table: card.querySelector(".table-wrap"),
+        empty: card.querySelector(".card-empty"),
+        sub: card.querySelector(".card-sub"),
+        toggle: card.querySelector('[data-action="table"]'),
+        legend: card.querySelector(".band-legend"),
+      },
+    ];
+  }),
+);
+
 // ---- Controls ---------------------------------------------------------
 const locInput = document.getElementById("location-input");
 const rangeSelect = document.getElementById("range-select");
 const suggestionsEl = document.getElementById("location-suggestions");
 const statusEl = document.getElementById("status");
-const chartEl = document.getElementById("chart");
 const kpisEl = document.getElementById("kpis");
 const placeTitleEl = document.getElementById("place-title");
 const rangeSubtitleEl = document.getElementById("range-subtitle");
@@ -256,12 +276,172 @@ function escapeHtml(s) {
 }
 
 async function rerenderChartIfData() {
-  if (!lastHistory) return;
-  await Plotly.react(
-    chartEl,
-    ...Object.values(buildFigure(lastHistory, effectiveTheme())),
-    plotlyConfig(),
+  if (lastHistory) await renderCharts(lastHistory);
+}
+
+const EMPTY_MESSAGES = {
+  temperature: "No temperature data for this period.",
+  humidity: "No humidity data for this period.",
+  aqi: "No air-quality data for this period — it typically covers only the last 2–3 years.",
+};
+
+function cardSubtitle(key, history) {
+  const daily = history.granularity === "daily";
+  if (key === "temperature") return daily ? "°C · daily low–high range and mean" : "°C · hourly";
+  if (key === "humidity") return daily ? "% · daily low–high range and mean" : "% · hourly";
+  return daily ? "US AQI · daily mean" : "US AQI · hourly";
+}
+
+async function renderCharts(history) {
+  const figs = buildCharts(history, effectiveTheme());
+  const config = plotlyConfig();
+  await Promise.all(
+    CHART_KEYS.map(async (key) => {
+      const c = cards[key];
+      const fig = figs[key];
+      c.sub.textContent = cardSubtitle(key, history);
+      if (c.legend) renderBandLegend(c.legend, fig ? history.aqi.us_aqi : null);
+      c.empty.hidden = Boolean(fig);
+      c.toggle.hidden = !fig;
+      if (!fig) {
+        c.empty.textContent = EMPTY_MESSAGES[key];
+        c.wrap.hidden = true;
+        c.table.hidden = true;
+        Plotly.purge(c.chart);
+        return;
+      }
+      const showTable = c.toggle.getAttribute("aria-pressed") === "true";
+      c.wrap.hidden = showTable;
+      c.table.hidden = !showTable;
+      if (showTable) renderTable(key, history);
+      await Plotly.react(c.chart, fig.data, fig.layout, config);
+      bindSync(c.chart);
+    }),
   );
+}
+
+function renderBandLegend(listEl, values) {
+  if (!values) {
+    listEl.hidden = true;
+    return;
+  }
+  listEl.replaceChildren(
+    ...visibleAqiBands(values).map((band) => {
+      const item = el("li");
+      const swatch = el("span", "band-swatch");
+      swatch.style.background = band.color;
+      item.append(swatch, document.createTextNode(band.label));
+      return item;
+    }),
+  );
+  listEl.hidden = false;
+}
+
+// ---- Table view (the accessible twin of each chart) ---------------------
+function tableColumns(key, history) {
+  const w = history.weather;
+  const daily = history.granularity === "daily";
+  if (key === "temperature") {
+    return daily
+      ? [
+          ["Low (°C)", w.temperature_2m_min, 1],
+          ["Mean (°C)", w.temperature_2m_mean, 1],
+          ["High (°C)", w.temperature_2m_max, 1],
+        ]
+      : [["Temperature (°C)", w.temperature_2m, 1]];
+  }
+  if (key === "humidity") {
+    return daily
+      ? [
+          ["Low (%)", w.relative_humidity_2m_min, 0],
+          ["Mean (%)", w.relative_humidity_2m_mean, 0],
+          ["High (%)", w.relative_humidity_2m_max, 0],
+        ]
+      : [["Humidity (%)", w.relative_humidity_2m, 0]];
+  }
+  return [
+    ["US AQI", history.aqi.us_aqi, 0],
+    ["PM2.5 (µg/m³)", history.aqi.pm2_5, 1],
+    ["PM10 (µg/m³)", history.aqi.pm10, 1],
+  ];
+}
+
+function renderTable(key, history) {
+  const columns = tableColumns(key, history);
+  const table = el("table", "data-table");
+  table.setAttribute("aria-label", `${cards[key].card.querySelector(".card-title").textContent} data`);
+  const headRow = el("tr");
+  headRow.append(el("th", null, history.granularity === "daily" ? "Date" : "Time"));
+  for (const [label] of columns) headRow.append(el("th", null, label));
+  const head = el("thead");
+  head.append(headRow);
+  table.append(head);
+  const body = el("tbody");
+  history.times.forEach((t, i) => {
+    const row = el("tr");
+    row.append(el("td", null, t.replace("T", " ")));
+    for (const [, values, digits] of columns) {
+      const v = values?.[i];
+      row.append(el("td", null, v == null || !Number.isFinite(v) ? "—" : v.toFixed(digits)));
+    }
+    body.append(row);
+  });
+  table.append(body);
+  cards[key].table.replaceChildren(table);
+}
+
+for (const key of CHART_KEYS) {
+  const c = cards[key];
+  c.toggle.addEventListener("click", () => {
+    const show = c.toggle.getAttribute("aria-pressed") !== "true";
+    c.toggle.setAttribute("aria-pressed", String(show));
+    c.toggle.textContent = show ? "Chart" : "Table";
+    if (show && lastHistory) renderTable(key, lastHistory);
+    c.table.hidden = !show;
+    c.wrap.hidden = show;
+    if (!show && c.chart._fullLayout) Plotly.Plots.resize(c.chart);
+  });
+}
+
+// ---- Synced crosshair & zoom across cards --------------------------------
+let syncing = false;
+function otherCharts(div) {
+  return CHART_KEYS.map((k) => cards[k])
+    .filter((c) => c.chart !== div && c.chart._fullLayout && !c.wrap.hidden)
+    .map((c) => c.chart);
+}
+function bindSync(div) {
+  if (div.dataset.synced) return;
+  div.dataset.synced = "1";
+  div.on("plotly_hover", (ev) => {
+    if (syncing || !ev.xvals) return;
+    syncing = true;
+    try {
+      for (const other of otherCharts(div)) Plotly.Fx.hover(other, { xval: ev.xvals[0] });
+    } finally {
+      syncing = false;
+    }
+  });
+  div.on("plotly_unhover", () => {
+    if (syncing) return;
+    syncing = true;
+    try {
+      for (const other of otherCharts(div)) Plotly.Fx.unhover(other);
+    } finally {
+      syncing = false;
+    }
+  });
+  div.on("plotly_relayout", (ev) => {
+    if (syncing) return;
+    const update = Object.fromEntries(
+      Object.entries(ev).filter(([k]) => k.startsWith("xaxis.range") || k === "xaxis.autorange"),
+    );
+    if (Object.keys(update).length === 0) return;
+    syncing = true;
+    Promise.all(otherCharts(div).map((other) => Plotly.relayout(other, update))).finally(() => {
+      syncing = false;
+    });
+  });
 }
 
 function plotlyConfig() {
@@ -284,9 +464,10 @@ async function refreshChart() {
     return;
   }
 
-  statusEl.textContent = `Loading ${locText} (${rangeLabel(prefs.range)})…`;
+  // Only the first load gets a status line; refetches keep the previous
+  // render (dimmed) so nothing jumps.
+  if (!lastHistory) statusEl.textContent = `Loading ${locText} (${rangeLabel(prefs.range)})…`;
   hideErrorBanner();
-  kpisEl.hidden = true;
 
   if (inFlight) inFlight.abort();
   const ctrl = new AbortController();
@@ -319,11 +500,10 @@ async function refreshChart() {
       signal: ctrl.signal,
     });
     lastHistory = history;
-    const fig = buildFigure(history, effectiveTheme());
-    await Plotly.react(chartEl, fig.data, fig.layout, plotlyConfig());
     statusEl.textContent = "";
     renderHeading(history);
     renderKpis(history);
+    await renderCharts(history);
   } catch (err) {
     if (err.name === "AbortError" && ctrl.signal.reason?.name !== "TimeoutError") {
       return; // superseded by a newer request
@@ -463,7 +643,6 @@ refreshChart();
 // Re-render chart on viewport size / orientation changes so the
 // mobile vs. desktop layout switches correctly.
 let resizeTimer = null;
-const NARROW_BREAKPOINT = 640;
 let wasNarrow = window.innerWidth < NARROW_BREAKPOINT;
 function onViewportChange() {
   clearTimeout(resizeTimer);

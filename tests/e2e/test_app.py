@@ -40,10 +40,9 @@ def test_default_view_renders_hanoi_last_7_days(app: App) -> None:
         },
         "coverage": {"label": "AQI coverage", "value": "100%", "sub": "168 hourly readings"},
     }
-    names = [t["name"] for t in app.traces()]
-    assert "AQI" in names
-    assert any(n.startswith("Temp") for n in names)
-    assert any("umidity" in n for n in names)
+    assert app.traces("temperature") == [{"name": "Value", "n": 168}]
+    assert app.traces("humidity") == [{"name": "Value", "n": 168}]
+    assert app.traces("aqi") == [{"name": "AQI", "n": 168}]
 
 
 def test_recent_days_come_from_forecast_and_older_from_archive(app: App) -> None:
@@ -216,7 +215,11 @@ def test_air_quality_failure_still_renders_weather(app: App) -> None:
         "sub": "No air-quality data for this period",
     }
     assert kpis["coverage"]["value"] == "0%"
-    assert "AQI" not in [t["name"] for t in app.traces()]
+    aqi_card = app.page.locator('[data-chart="aqi"]')
+    expect(aqi_card.locator(".card-empty")).to_contain_text("No air-quality data")
+    expect(aqi_card.locator(".chart-wrap")).to_be_hidden()
+    expect(aqi_card.locator('[data-action="table"]')).to_be_hidden()
+    assert app.traces("aqi") == []
 
 
 def test_request_timeout_after_30s(app: App) -> None:
@@ -243,7 +246,7 @@ def test_theme_switch_restyles_page_and_chart(app: App) -> None:
     page.select_option("#theme-select", "dark")
     expect(html).to_have_attribute("data-theme", "dark")
     page.wait_for_function(
-        "() => document.getElementById('chart').layout.paper_bgcolor === '#1a1a19'"
+        "() => document.getElementById('chart-temperature').layout.paper_bgcolor === '#1a1a19'"
     )
     # Body background has a 0.2s CSS transition; to_have_css retries until it settles.
     expect(page.locator("body")).to_have_css("background-color", "rgb(13, 13, 13)")
@@ -261,7 +264,7 @@ def test_system_theme_follows_os_preference(app: App) -> None:
     app.page.emulate_media(color_scheme="light")
     expect(app.page.locator("html")).to_have_attribute("data-theme", "light")
     app.page.wait_for_function(
-        "() => document.getElementById('chart').layout.paper_bgcolor === '#fcfcfb'"
+        "() => document.getElementById('chart-temperature').layout.paper_bgcolor === '#fcfcfb'"
     )
 
 

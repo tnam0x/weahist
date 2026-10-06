@@ -121,14 +121,17 @@ class App:
         expect(self.page.locator("#kpis")).to_be_visible()
         expect(self.page.locator("#loading")).to_be_hidden()
 
-    def layout(self) -> dict[str, Any]:
-        """The Plotly layout object currently rendered in ``#chart``."""
-        return self.page.evaluate("() => document.getElementById('chart').layout")  # type: ignore[no-any-return]
-
-    def traces(self) -> list[dict[str, Any]]:
+    def layout(self, chart: str = "temperature") -> dict[str, Any]:
+        """The Plotly layout rendered in a chart card (temperature/humidity/aqi)."""
         return self.page.evaluate(  # type: ignore[no-any-return]
-            "() => document.getElementById('chart').data"
-            ".map(t => ({name: t.name, n: (t.x || []).length}))"
+            "(id) => document.getElementById(id).layout", f"chart-{chart}"
+        )
+
+    def traces(self, chart: str = "temperature") -> list[dict[str, Any]]:
+        return self.page.evaluate(  # type: ignore[no-any-return]
+            "(id) => (document.getElementById(id).data || [])"
+            ".map(t => ({name: t.name, n: (t.x || []).length}))",
+            f"chart-{chart}",
         )
 
     def heading(self) -> tuple[str, str]:

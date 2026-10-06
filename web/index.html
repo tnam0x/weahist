@@ -81,24 +81,67 @@
           </div>
         </div>
       </section>
+      <div id="loading" class="progress" role="progressbar" aria-label="Loading" hidden></div>
     </div>
 
     <main class="bar">
       <div id="status" class="status" role="status"></div>
+      <header class="page-head">
+        <h2 id="place-title" class="page-title"></h2>
+        <p id="range-subtitle" class="page-sub"></p>
+      </header>
       <section id="kpis" class="kpis" aria-label="Summary" hidden></section>
-      <article class="card">
-        <header class="card-head">
-          <h2 id="place-title" class="card-title"></h2>
-          <p id="range-subtitle" class="card-sub"></p>
-        </header>
-        <div class="chart-wrap">
-          <div id="chart" class="chart"></div>
-          <div id="loading" class="loading-overlay" hidden aria-live="polite">
-            <div class="spinner" role="status" aria-label="Loading"></div>
-            <div class="loading-text">Fetching data…</div>
+      <section id="charts" class="charts" aria-label="Charts">
+        <article class="card chart-card" data-chart="temperature">
+          <header class="card-head">
+            <div>
+              <h3 class="card-title">Temperature</h3>
+              <p class="card-sub">°C</p>
+            </div>
+            <button type="button" class="btn-ghost" data-action="table" aria-pressed="false">
+              Table
+            </button>
+          </header>
+          <div class="chart-wrap">
+            <div id="chart-temperature" class="chart"></div>
           </div>
-        </div>
-      </article>
+          <div class="table-wrap" hidden></div>
+          <p class="card-empty" hidden></p>
+        </article>
+        <article class="card chart-card" data-chart="humidity">
+          <header class="card-head">
+            <div>
+              <h3 class="card-title">Relative humidity</h3>
+              <p class="card-sub">%</p>
+            </div>
+            <button type="button" class="btn-ghost" data-action="table" aria-pressed="false">
+              Table
+            </button>
+          </header>
+          <div class="chart-wrap">
+            <div id="chart-humidity" class="chart"></div>
+          </div>
+          <div class="table-wrap" hidden></div>
+          <p class="card-empty" hidden></p>
+        </article>
+        <article class="card chart-card" data-chart="aqi">
+          <header class="card-head">
+            <div>
+              <h3 class="card-title">Air quality</h3>
+              <p class="card-sub">US AQI</p>
+              <ul class="band-legend" aria-label="AQI categories" hidden></ul>
+            </div>
+            <button type="button" class="btn-ghost" data-action="table" aria-pressed="false">
+              Table
+            </button>
+          </header>
+          <div class="chart-wrap">
+            <div id="chart-aqi" class="chart"></div>
+          </div>
+          <div class="table-wrap" hidden></div>
+          <p class="card-empty" hidden></p>
+        </article>
+      </section>
     </main>
 
     <footer class="app-footer">

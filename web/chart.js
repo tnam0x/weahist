@@ -1,379 +1,307 @@
-// Builds a Plotly figure from a merged history payload.
-// Started as a port of src/weahist/visualization/plotly_renderer.py; the web
-// version has since diverged (HTML card titles, design-token palette).
+// Builds one Plotly figure per chart card (temperature, humidity, AQI) from a
+// merged history payload. Each figure has a single y-axis; titles and units
+// live in the card's HTML header, so figures carry no title or legend.
+// (Started as a port of src/weahist/visualization/plotly_renderer.py; the web
+// version has since diverged.)
 
 import { AQI_BANDS, aqiCategory, aqiMax } from "./aqi.js";
 import { FONT_FAMILY, paletteFor } from "./theme.js";
 
+export const NARROW_BREAKPOINT = 640;
+
+// Headroom above/below the data so extrema labels stay inside the plot.
+const LABEL_PAD = 0.28;
+
 /**
  * @param {object} history result of fetchHistory()
  * @param {"light"|"dark"} theme
- * @returns {{ data: any[], layout: any }}
+ * @returns {{ temperature: Figure|null, humidity: Figure|null, aqi: Figure|null }}
+ *   where Figure = { data: any[], layout: any }
  */
-export function buildFigure(history, theme) {
+export function buildCharts(history, theme) {
   const p = paletteFor(theme);
-  const { location, times, weather, aqi } = history;
-  const isNarrow =
-    typeof window !== "undefined" && window.innerWidth < 640;
+  const isNarrow = typeof window !== "undefined" && window.innerWidth < NARROW_BREAKPOINT;
+  const ctx = { p, isNarrow, times: history.times, granularity: history.granularity };
+  const w = history.weather;
 
-  const tempCol =
-    "temperature_2m" in weather
-      ? "temperature_2m"
-      : "temperature_2m_mean" in weather
-      ? "temperature_2m_mean"
-      : null;
-  const humidCol =
-    "relative_humidity_2m" in weather
-      ? "relative_humidity_2m"
-      : "relative_humidity_2m_mean" in weather
-      ? "relative_humidity_2m_mean"
-      : null;
-  const hasAqi = aqi.us_aqi && aqi.us_aqi.some((v) => v != null && Number.isFinite(v));
-
-  // Subplot domains (Plotly y-domains are bottom-up; row 1 on top).
-  // Match Python make_subplots(row_heights=[0.6, 0.4], vertical_spacing=0.08).
-  const layout = {
-    template: { layout: { paper_bgcolor: p.paperBg, plot_bgcolor: p.plotBg } },
-    paper_bgcolor: p.paperBg,
-    plot_bgcolor: p.plotBg,
-    font: { color: p.text, family: FONT_FAMILY },
-    hovermode: "x unified",
-    margin: isNarrow
-      ? { t: 16, r: 55, b: 80, l: 50 }
-      : { t: 48, r: 70, b: 60, l: 70 },
-    legend: isNarrow
-      ? {
-          orientation: "h",
-          yanchor: "top",
-          y: -0.18,
-          xanchor: "left",
-          x: 0,
-          bgcolor: "rgba(0,0,0,0)",
-          borderwidth: 0,
-          font: { color: p.text, size: 10 },
-        }
-      : {
-          orientation: "h",
-          yanchor: "bottom",
-          y: 1.04,
-          xanchor: "right",
-          x: 1.0,
-          bgcolor: p.legendBg,
-          bordercolor: p.border,
-          borderwidth: 1,
-          font: { color: p.text },
-        },
-    shapes: [],
-    annotations: [],
-  };
-
-  const tzAxisTitle = `Time (${location.timezone})`;
-
-  const data = [];
-
-  // Common axis defaults.
-  const axisCommon = {
-    showline: true,
-    linewidth: 1,
-    linecolor: p.border,
-    mirror: true,
-    gridcolor: p.grid,
-    color: p.text,
-  };
-
-  if (hasAqi) {
-    // Two rows. Row 1 [0.52, 1.0], Row 2 [0, 0.40] (12% gap).
-    layout.xaxis = {
-      ...axisCommon,
-      anchor: "y",
-      domain: [0, 1],
-      showticklabels: false,
-    };
-    layout.yaxis = {
-      ...axisCommon,
-      anchor: "x",
-      domain: [0.52, 1.0],
-      title: { text: isNarrow ? "Temp (°C)" : "Temperature (°C)", font: { color: p.text, size: isNarrow ? 11 : 13 } },
-    };
-    layout.yaxis2 = {
-      ...axisCommon,
-      anchor: "x",
-      overlaying: "y",
-      side: "right",
-      title: { text: "Humidity (%)", font: { color: p.text, size: isNarrow ? 11 : 13 } },
-      showgrid: false,
-    };
-    layout.xaxis2 = {
-      ...axisCommon,
-      anchor: "y3",
-      domain: [0, 1],
-      matches: "x",
-      title: { text: tzAxisTitle, font: { color: p.text, size: isNarrow ? 11 : 13 } },
-    };
-    layout.yaxis3 = {
-      ...axisCommon,
-      anchor: "x2",
-      domain: [0, 0.40],
-      title: { text: isNarrow ? "AQI" : "AQI (0–500)", font: { color: p.text, size: isNarrow ? 11 : 13 } },
-    };
-  } else {
-    layout.xaxis = {
-      ...axisCommon,
-      anchor: "y",
-      domain: [0, 1],
-      title: { text: tzAxisTitle, font: { color: p.text, size: isNarrow ? 11 : 13 } },
-    };
-    layout.yaxis = {
-      ...axisCommon,
-      anchor: "x",
-      domain: [0, 1],
-      title: { text: isNarrow ? "Temp (°C)" : "Temperature (°C)", font: { color: p.text, size: isNarrow ? 11 : 13 } },
-    };
-    layout.yaxis2 = {
-      ...axisCommon,
-      anchor: "x",
-      overlaying: "y",
-      side: "right",
-      title: { text: "Humidity (%)", font: { color: p.text, size: isNarrow ? 11 : 13 } },
-      showgrid: false,
-    };
-  }
-
-  // NOTE: AQI band shapes are pushed *before* weekend/day-separator shapes
-  // (in the `// AQI panel` block below), then `addTimeDecorations` is called
-  // afterwards so weekend rectangles overlay the bands. Plotly draws shapes
-  // in array order, so this keeps the weekend gray visible on both panels.
-
-  // Temperature trace.
-  if (tempCol) {
-    data.push({
-      type: "scatter",
-      mode: "lines",
-      name: isNarrow ? "Temp" : "Temperature (°C)",
-      x: times,
-      y: weather[tempCol],
-      xaxis: "x",
-      yaxis: "y",
-      line: { color: p.tempLine, width: 2 },
-      hovertemplate: "<b>%{y:.1f} °C</b><extra>Temperature</extra>",
-    });
-    annotateExtrema(layout, times, weather[tempCol], p, "°C", { compact: isNarrow });
-  }
-
-  // Humidity trace.
-  if (humidCol) {
-    data.push({
-      type: "scatter",
-      mode: "lines",
-      name: isNarrow ? "Humidity" : "Relative humidity (%)",
-      x: times,
-      y: weather[humidCol],
-      xaxis: "x",
-      yaxis: "y2",
-      line: { color: p.humidityLine, width: 1.5 },
-      hovertemplate: "<b>%{y:.0f}%</b><extra>Humidity</extra>",
-    });
-    // Each y-axis autoranges independently, so the temperature and humidity
-    // extrema always sit on the same panel edges. Temperature labels point
-    // outward; humidity labels point inward so the two never collide.
-    annotateExtrema(layout, times, weather[humidCol], p, "%", {
-      yref: "y2",
+  return {
+    temperature: seriesChart(ctx, {
+      line: w.temperature_2m ?? w.temperature_2m_mean,
+      low: w.temperature_2m_min,
+      high: w.temperature_2m_max,
+      color: p.tempLine,
+      unit: " °C",
+      digits: 1,
+    }),
+    humidity: seriesChart(ctx, {
+      line: w.relative_humidity_2m ?? w.relative_humidity_2m_mean,
+      low: w.relative_humidity_2m_min,
+      high: w.relative_humidity_2m_max,
       color: p.humidityLine,
+      unit: "%",
       digits: 0,
-      maxAy: 32,
-      minAy: -32,
-      compact: isNarrow,
-    });
-  }
+    }),
+    aqi: aqiChart(ctx, history.aqi.us_aqi),
+  };
+}
 
-  // AQI panel.
-  if (hasAqi) {
-    const top = aqiMax(aqi.us_aqi);
-    layout.yaxis3.range = [0, top];
-
-    AQI_BANDS.forEach((band, i) => {
-      if (band.lower > top) return;
-      const upper = Math.min(band.upper, top);
-      layout.shapes.push({
-        type: "rect",
-        xref: "x2 domain",
-        yref: "y3",
-        x0: 0,
-        x1: 1,
-        y0: band.lower,
-        y1: upper,
-        fillcolor: band.color,
-        opacity: p.bandOpacity[i],
-        line: { width: 0 },
-        layer: "below",
-      });
-      layout.annotations.push({
-        xref: "x2 domain",
-        yref: "y3",
-        x: 0.005,
-        y: (band.lower + upper) / 2,
-        text: isNarrow ? band.short : band.label,
-        showarrow: false,
-        xanchor: "left",
-        yanchor: "middle",
-        font: { size: isNarrow ? 9 : 10, color: p.textMute },
-      });
-    });
-
-    const categories = aqi.us_aqi.map((v) =>
-      v == null ? "" : aqiCategory(v),
-    );
-    data.push({
-      type: "scatter",
-      mode: "lines",
-      name: "AQI",
-      x: times,
-      y: aqi.us_aqi,
-      xaxis: "x2",
-      yaxis: "y3",
-      line: { color: p.aqiLine, width: 2 },
-      customdata: categories,
-      hovertemplate: "<b>AQI %{y:.0f}</b> · %{customdata}<extra></extra>",
-    });
-
-    annotateAqiExtrema(layout, times, aqi.us_aqi, p, { compact: isNarrow });
-  }
-
-  // Weekend shading + day separators (pushed last so they overlay AQI bands).
-  addTimeDecorations(layout, times, p, hasAqi);
-
-  return { data, layout };
+/** AQI bands drawn behind the chart for these values (lowest first). */
+export function visibleAqiBands(values) {
+  const top = aqiMax(values);
+  return AQI_BANDS.filter((band) => band.lower <= top);
 }
 
 // ---------------------------------------------------------------------
 
-function addTimeDecorations(layout, times, p, hasAqi) {
+function finite(values) {
+  return (values || []).filter((v) => v != null && Number.isFinite(v));
+}
+
+function baseLayout({ p, isNarrow, times, granularity }) {
+  const tickFont = { size: isNarrow ? 10 : 11, color: p.textMute };
+  const layout = {
+    template: { layout: { paper_bgcolor: p.paperBg, plot_bgcolor: p.plotBg } },
+    paper_bgcolor: p.paperBg,
+    plot_bgcolor: p.plotBg,
+    font: { color: p.text, family: FONT_FAMILY, size: isNarrow ? 11 : 12 },
+    showlegend: false,
+    hovermode: "x unified",
+    hoverlabel: {
+      bgcolor: p.paperBg,
+      bordercolor: p.border,
+      font: { color: p.text, family: FONT_FAMILY, size: 12 },
+    },
+    dragmode: isNarrow ? false : "zoom",
+    margin: isNarrow ? { t: 8, r: 10, b: 32, l: 40 } : { t: 10, r: 20, b: 36, l: 52 },
+    xaxis: {
+      type: "date",
+      showline: true,
+      linecolor: p.border,
+      linewidth: 1,
+      showgrid: false,
+      ticks: "outside",
+      tickcolor: p.border,
+      ticklen: 4,
+      tickfont: tickFont,
+      hoverformat: granularity === "hourly" ? "%a %b %-d, %H:%M" : "%a %b %-d, %Y",
+      fixedrange: isNarrow,
+    },
+    yaxis: {
+      showline: false,
+      gridcolor: p.grid,
+      gridwidth: 1,
+      zeroline: false,
+      tickfont: tickFont,
+      nticks: isNarrow ? 4 : 6,
+      fixedrange: true,
+    },
+    shapes: [],
+    annotations: [],
+  };
+  if (granularity === "hourly") addTimeDecorations(layout, times, p);
+  return layout;
+}
+
+/** A line, or (daily) a low–high band with the mean line on top. */
+function seriesChart(ctx, { line, low, high, color, unit, digits }) {
+  const { p, times, isNarrow, granularity } = ctx;
+  if (!line || finite(line).length === 0) return null;
+
+  const layout = baseLayout(ctx);
+  const data = [];
+  const fmt = `%{y:.${digits}f}${unit}`;
+  const band = granularity === "daily" && finite(low).length > 0 && finite(high).length > 0;
+
+  if (band) {
+    data.push({
+      type: "scatter",
+      mode: "lines",
+      name: "High",
+      x: times,
+      y: high,
+      line: { width: 0, color },
+      hovertemplate: fmt,
+    });
+    data.push({
+      type: "scatter",
+      mode: "lines",
+      name: "Low",
+      x: times,
+      y: low,
+      fill: "tonexty",
+      fillcolor: hexToRgba(color, 0.14),
+      line: { width: 0, color },
+      hovertemplate: fmt,
+    });
+  }
+  data.push({
+    type: "scatter",
+    mode: "lines",
+    name: band ? "Mean" : "Value",
+    x: times,
+    y: line,
+    line: { color, width: 2, shape: "spline", smoothing: 0.4 },
+    hovertemplate: band ? fmt : `<b>${fmt}</b><extra></extra>`,
+  });
+
+  const hiSeries = band ? high : line;
+  const loSeries = band ? low : line;
+  const lo = Math.min(...finite(loSeries));
+  const hi = Math.max(...finite(hiSeries));
+  const span = hi - lo || Math.max(Math.abs(hi), 1);
+  layout.yaxis.range = [lo - span * LABEL_PAD, hi + span * LABEL_PAD];
+  layout.yaxis.ticksuffix = unit.trim() === "%" ? "%" : "°";
+
+  annotateExtreme(layout, times, hiSeries, "max", { p, color, unit, digits, isNarrow });
+  annotateExtreme(layout, times, loSeries, "min", { p, color, unit, digits, isNarrow });
+  return { data, layout };
+}
+
+function aqiChart(ctx, values) {
+  const { p, times, isNarrow } = ctx;
+  if (!values || finite(values).length === 0) return null;
+  // Band names are shown as an HTML legend in the card header (see
+  // visibleAqiBands) so they never collide with the line.
+
+  const layout = baseLayout(ctx);
+  const top = aqiMax(values);
+  const rangeTop = top * (1 + LABEL_PAD / 2);
+  layout.yaxis.range = [0, rangeTop];
+
+  const decorations = layout.shapes;
+  layout.shapes = [];
+
+  const visible = visibleAqiBands(values);
+  visible.forEach((band, i) => {
+    const upper = i === visible.length - 1 ? rangeTop : band.upper;
+    layout.shapes.push({
+      type: "rect",
+      xref: "x domain",
+      yref: "y",
+      x0: 0,
+      x1: 1,
+      y0: band.lower,
+      y1: upper,
+      fillcolor: band.color,
+      opacity: p.bandOpacity[AQI_BANDS.indexOf(band)],
+      line: { width: 0 },
+      layer: "below",
+    });
+  });
+
+  // Day separators/weekends go on top of the bands (shapes draw in order).
+  layout.shapes.push(...decorations);
+
+  const data = [
+    {
+      type: "scatter",
+      mode: "lines",
+      name: "AQI",
+      x: times,
+      y: values,
+      line: { color: p.aqiLine, width: 2, shape: "spline", smoothing: 0.4 },
+      customdata: values.map((v) => (v == null ? "" : aqiCategory(v))),
+      hovertemplate: "<b>%{y:.0f}</b> · %{customdata}<extra></extra>",
+    },
+  ];
+  annotateExtreme(layout, times, values, "max", {
+    p,
+    color: p.aqiLine,
+    unit: "",
+    digits: 0,
+    isNarrow,
+  });
+  return { data, layout };
+}
+
+/** Label the series' max or min with a short ink-colored callout. */
+function annotateExtreme(layout, times, values, which, { p, color, unit, digits, isNarrow }) {
+  let idx = -1;
+  for (let i = 0; i < values.length; i++) {
+    const v = values[i];
+    if (v == null || !Number.isFinite(v)) continue;
+    if (idx === -1 || (which === "max" ? v > values[idx] : v < values[idx])) idx = i;
+  }
+  if (idx === -1) return;
+  layout.annotations.push({
+    x: times[idx],
+    y: values[idx],
+    xref: "x",
+    yref: "y",
+    text: `${which} ${values[idx].toFixed(digits)}${unit}`,
+    showarrow: true,
+    arrowhead: 0,
+    arrowwidth: 1,
+    arrowcolor: color,
+    ax: 0,
+    ay: which === "max" ? -20 : 20,
+    font: { size: isNarrow ? 10 : 11, color: p.text },
+    bgcolor: p.annotationBg,
+    bordercolor: color,
+    borderwidth: 1,
+    borderpad: 2,
+  });
+}
+
+/** Solid hairline day separators and a faint weekend wash (hourly views). */
+function addTimeDecorations(layout, times, p) {
   if (times.length === 0) return;
-  const dayBoundaries = collectDayBoundaries(times);
-
-  // Day separators on both panels.
-  const separatorRefs = hasAqi
-    ? [{ xref: "x", yref: "y domain" }, { xref: "x2", yref: "y3 domain" }]
-    : [{ xref: "x", yref: "y domain" }];
-
-  for (const { xref, yref } of separatorRefs) {
-    for (const x of dayBoundaries.slice(1, -1)) {
+  const days = collectDays(times);
+  for (const day of days) {
+    const weekday = new Date(`${day}T12:00:00`).getDay();
+    if (weekday === 0 || weekday === 6) {
       layout.shapes.push({
-        type: "line",
-        xref,
-        yref,
-        x0: x,
-        x1: x,
+        type: "rect",
+        xref: "x",
+        yref: "y domain",
+        x0: `${day}T00:00:00`,
+        x1: `${addDays(day, 1)}T00:00:00`,
         y0: 0,
         y1: 1,
-        line: { color: p.daySeparator, width: 1 },
+        fillcolor: p.weekendFill,
+        line: { width: 0 },
         layer: "below",
       });
     }
   }
+  for (const day of days.slice(1)) {
+    layout.shapes.push({
+      type: "line",
+      xref: "x",
+      yref: "y domain",
+      x0: `${day}T00:00:00`,
+      x1: `${day}T00:00:00`,
+      y0: 0,
+      y1: 1,
+      line: { color: p.daySeparator, width: 1 },
+      layer: "below",
+    });
+  }
 }
 
-/** Collect midnight timestamps (as ISO strings) for the time range. */
-function collectDayBoundaries(times) {
-  if (times.length === 0) return [];
-  const startDay = times[0].slice(0, 10);
-  const endDay = times[times.length - 1].slice(0, 10);
+/** Distinct "YYYY-MM-DD" days covered by the timestamps, in order. */
+function collectDays(times) {
   const out = [];
-  const cur = new Date(`${startDay}T00:00:00`);
-  const last = new Date(`${endDay}T00:00:00`);
-  last.setDate(last.getDate() + 1);
-  while (cur <= last) {
-    out.push(`${ymd(cur)}T00:00:00`);
-    cur.setDate(cur.getDate() + 1);
+  let day = times[0].slice(0, 10);
+  const last = times[times.length - 1].slice(0, 10);
+  while (day <= last) {
+    out.push(day);
+    day = addDays(day, 1);
   }
   return out;
 }
 
-function ymd(d) {
+function addDays(ymdStr, n) {
+  const d = new Date(`${ymdStr}T12:00:00`);
+  d.setDate(d.getDate() + n);
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
 }
 
-function annotateExtrema(layout, times, values, p, unit, opts = {}) {
-  const indices = extremaIndices(values);
-  if (!indices) return;
-  const yref = opts.yref || "y";
-  const digits = opts.digits ?? 1;
-  const compact = !!opts.compact;
-  const fontSize = compact ? 9 : 10;
-  const colorMax = opts.color || p.tempLine;
-  const colorMin = opts.color || p.tempLine;
-  const items = [
-    { label: "max", idx: indices.maxIdx, color: colorMax, ay: opts.maxAy ?? -28 },
-    { label: "min", idx: indices.minIdx, color: colorMin, ay: opts.minAy ?? 28 },
-  ];
-  for (const item of items) {
-    const value = values[item.idx];
-    layout.annotations.push({
-      x: times[item.idx],
-      y: value,
-      xref: "x",
-      yref,
-      text: `${item.label} ${value.toFixed(digits)}${unit}`,
-      showarrow: true,
-      arrowhead: 2,
-      arrowcolor: item.color,
-      ax: 0,
-      ay: item.ay,
-      font: { size: fontSize, color: p.text },
-      bgcolor: p.annotationBg,
-      bordercolor: item.color,
-      borderwidth: 1,
-    });
-  }
-}
-
-function annotateAqiExtrema(layout, times, values, p, opts = {}) {
-  const indices = extremaIndices(values);
-  if (!indices) return;
-  const compact = !!opts.compact;
-  const fontSize = compact ? 9 : 10;
-  for (const [label, idx, ay] of [
-    ["max", indices.maxIdx, -24],
-    ["min", indices.minIdx, 24],
-  ]) {
-    const value = values[idx];
-    const category = aqiCategory(value);
-    const text = compact
-      ? `${label} ${value.toFixed(0)}`
-      : `${label} AQI ${value.toFixed(0)} · ${category}`;
-    layout.annotations.push({
-      x: times[idx],
-      y: value,
-      xref: "x2",
-      yref: "y3",
-      text,
-      showarrow: true,
-      arrowhead: 2,
-      arrowcolor: p.aqiLine,
-      ax: 0,
-      ay,
-      font: { size: fontSize, color: p.aqiLine },
-      bgcolor: p.annotationBg,
-      bordercolor: p.aqiLine,
-      borderwidth: 1,
-    });
-  }
-}
-
-function extremaIndices(values) {
-  let maxIdx = -1;
-  let minIdx = -1;
-  let max = -Infinity;
-  let min = Infinity;
-  for (let i = 0; i < values.length; i++) {
-    const v = values[i];
-    if (v == null || !Number.isFinite(v)) continue;
-    if (v > max) { max = v; maxIdx = i; }
-    if (v < min) { min = v; minIdx = i; }
-  }
-  if (maxIdx === -1) return null;
-  return { maxIdx, minIdx };
+function hexToRgba(hex, alpha) {
+  const h = hex.replace("#", "");
+  const [r, g, b] = [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16));
+  return `rgba(${r},${g},${b},${alpha})`;
 }

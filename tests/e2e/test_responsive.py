@@ -171,51 +171,73 @@ def test_error_banner_fits_viewport(screen: App) -> None:
 
 # ---- Chart ----------------------------------------------------------------
 
+CHARTS = ["temperature", "humidity", "aqi"]
 
-def test_chart_fills_its_card(screen: App) -> None:
+
+@pytest.mark.parametrize("chart", CHARTS)
+def test_chart_fills_its_card(screen: App, chart: str) -> None:
     page = screen.page
     wrap_inner = page.evaluate(
-        """() => {
-            const el = document.querySelector('.chart-wrap');
+        """(chart) => {
+            const el = document.querySelector(`[data-chart="${chart}"] .chart-wrap`);
             const cs = getComputedStyle(el);
             return el.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
-        }"""
+        }""",
+        chart,
     )
-    svg = _box(page, "#chart .main-svg")
+    svg = _box(page, f"#chart-{chart} .main-svg")
     assert svg["width"] <= wrap_inner + 1, "chart is wider than its card"
     assert svg["width"] >= wrap_inner - 2, "chart does not fill its card"
-    assert svg["height"] >= 500
+    assert svg["height"] >= 200
 
 
-def test_chart_title_legend_and_labels_stay_inside_plot(screen: App) -> None:
+def test_time_axes_line_up_across_cards(screen: App) -> None:
+    # Small multiples only compare well if every plot area spans the same x range.
+    edges = screen.page.evaluate(
+        """() => [...document.querySelectorAll('.chart .nsewdrag')].map(el => {
+            const r = el.getBoundingClientRect();
+            return [Math.round(r.left), Math.round(r.right)];
+        })"""
+    )
+    assert len(edges) == 3
+    assert all(e == edges[0] for e in edges), edges
+
+
+@pytest.mark.parametrize("chart", CHARTS)
+def test_chart_labels_stay_inside_plot(screen: App, chart: str) -> None:
     page = screen.page
-    svg = _box(page, "#chart .main-svg")
-    for selector in ("#chart .gtitle", "#chart .legend", "#chart .annotation"):
-        for i, el in enumerate(page.locator(selector).all()):
-            box = el.bounding_box()
-            if box is None or box["width"] == 0:
-                continue
-            what = f"{selector}[{i}] ({el.text_content()!r})"
-            assert box["x"] >= svg["x"] - 1, f"{what} is clipped on the left"
-            assert box["x"] + box["width"] <= svg["x"] + svg["width"] + 1, (
-                f"{what} is clipped on the right"
-            )
-            assert box["y"] >= svg["y"] - 1, f"{what} is clipped at the top"
-            assert box["y"] + box["height"] <= svg["y"] + svg["height"] + 1, (
-                f"{what} is clipped at the bottom"
-            )
+    svg = _box(page, f"#chart-{chart} .main-svg")
+    for i, el in enumerate(page.locator(f"#chart-{chart} .annotation").all()):
+        box = el.locator("rect.bg").bounding_box()
+        if box is None or box["width"] == 0:
+            continue
+        what = f"{chart} annotation[{i}] ({el.text_content()!r})"
+        assert box["x"] >= svg["x"] - 1, f"{what} is clipped on the left"
+        assert box["x"] + box["width"] <= svg["x"] + svg["width"] + 1, (
+            f"{what} is clipped on the right"
+        )
+        assert box["y"] >= svg["y"] - 1, f"{what} is clipped at the top"
+        assert box["y"] + box["height"] <= svg["y"] + svg["height"] + 1, (
+            f"{what} is clipped at the bottom"
+        )
 
 
 def _extrema_label_collisions(app: App) -> list[tuple[str, str]]:
-    labels = app.page.locator("#chart .annotation").all()
-    # Measure the label box (rect.bg) only — the .annotation group also spans its arrow.
-    boxes = [(el.text_content(), el.locator("rect.bg").bounding_box()) for el in labels]
-    boxes = [
-        (t, b) for t, b in boxes if b and b["width"] > 0 and t and t.startswith(("max", "min"))
-    ]
-    return [
-        (a, b) for i, (a, ba) in enumerate(boxes) for b, bb in boxes[i + 1 :] if _overlap(ba, bb)
-    ]
+    collisions = []
+    for chart in CHARTS:
+        labels = app.page.locator(f"#chart-{chart} .annotation").all()
+        # Measure the label box (rect.bg) only — the .annotation group also spans its arrow.
+        boxes = [(el.text_content(), el.locator("rect.bg").bounding_box()) for el in labels]
+        boxes = [
+            (t, b) for t, b in boxes if b and b["width"] > 0 and t and t.startswith(("max", "min"))
+        ]
+        collisions += [
+            (a, b)
+            for i, (a, ba) in enumerate(boxes)
+            for b, bb in boxes[i + 1 :]
+            if _overlap(ba, bb)
+        ]
+    return collisions
 
 
 def test_chart_max_min_labels_do_not_collide(screen: App) -> None:
@@ -233,24 +255,22 @@ def test_labels_do_not_collide_when_peaks_coincide(
 
 
 def test_chart_uses_compact_layout_below_breakpoint(screen: App) -> None:
-    layout = screen.layout()
-    names = [t["name"] for t in screen.traces()]
-    if _width(screen.page) < NARROW_BREAKPOINT:
-        assert layout["legend"]["y"] < 0, "legend should move below the plot on phones"
-        assert "Temp" in names
-    else:
-        assert layout["legend"]["y"] > 1, "legend should sit above the plot"
-        assert "Temperature (°C)" in names
+    for chart in CHARTS:
+        layout = screen.layout(chart)
+        assert layout["showlegend"] is False, "single-series cards need no legend"
+        assert "yaxis2" not in layout, "one y-axis per chart"
+        if _width(screen.page) < NARROW_BREAKPOINT:
+            assert layout["margin"]["l"] == 40
+            assert layout["dragmode"] is False, "drag-to-zoom fights page scroll on phones"
+        else:
+            assert layout["margin"]["l"] == 52
 
 
 def test_modebar_hidden_on_touch_devices(screen: App) -> None:
     page = screen.page
     has_hover = page.evaluate("() => matchMedia('(hover: hover)').matches")
-    modebar = page.locator("#chart .modebar")
-    if has_hover:
-        expect(modebar).to_have_count(1)
-    else:
-        expect(modebar).to_have_count(0)
+    modebar = page.locator(".chart .modebar")
+    expect(modebar).to_have_count(3 if has_hover else 0)
 
 
 # ---- Resizing ---------------------------------------------------------------
@@ -259,15 +279,19 @@ def test_modebar_hidden_on_touch_devices(screen: App) -> None:
 def test_rotating_across_breakpoint_rerenders_chart(make_app: Callable[..., App]) -> None:
     app = make_app(viewport={"width": 1024, "height": 600}).open()
     page = app.page
-    assert app.layout()["legend"]["y"] > 1
+    assert app.layout()["margin"]["l"] == 52
 
     page.set_viewport_size({"width": 390, "height": 844})
-    page.wait_for_function("() => document.getElementById('chart').layout.legend.y < 0")
-    svg = _box(page, "#chart .main-svg")
+    page.wait_for_function(
+        "() => document.getElementById('chart-temperature').layout.margin.l === 40"
+    )
+    svg = _box(page, "#chart-temperature .main-svg")
     assert svg["width"] <= 390
 
     page.set_viewport_size({"width": 1024, "height": 600})
-    page.wait_for_function("() => document.getElementById('chart').layout.legend.y > 1")
+    page.wait_for_function(
+        "() => document.getElementById('chart-temperature').layout.margin.l === 52"
+    )
 
 
 def test_dark_theme_on_phone(make_app: Callable[..., App]) -> None:
