@@ -61,7 +61,7 @@ def test_inputs_use_16px_text_on_phones(make_app: Callable[..., App]) -> None:
     # iOS Safari zooms the page when focusing an input whose font is < 16px.
     app = make_app(viewport={"width": 375, "height": 667}, has_touch=True, is_mobile=True)
     page = app.open().page
-    for selector in ("#location-input", "#range-select", "#theme-select"):
+    for selector in ("#location-input", "#theme-select"):
         expect(page.locator(selector)).to_have_css("font-size", "16px")
 
 
@@ -69,7 +69,14 @@ def test_touch_targets_grow_on_coarse_pointers(make_app: Callable[..., App]) -> 
     app = make_app(viewport={"width": 768, "height": 1024}, has_touch=True, is_mobile=True)
     page = app.open().page
     assert page.evaluate("() => matchMedia('(pointer: coarse)').matches")
-    for selector in ("#location-input", "#range-select", "#theme-select"):
+    for selector in (
+        "#location-input",
+        "#locate",
+        '[data-range="1w"]',
+        "#custom-toggle",
+        '[data-units="f"]',
+        "#theme-select",
+    ):
         box = page.locator(selector).bounding_box()
         assert box is not None
         assert box["height"] >= 40, f"{selector} is {box['height']:.0f}px tall"

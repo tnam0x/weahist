@@ -80,7 +80,8 @@ def test_no_horizontal_scroll(screen: App) -> None:
         "#theme-select",
         ".controls",
         "#location-input",
-        "#range-select",
+        ".field-range",
+        ".field-units",
         ".chart-wrap",
         "#kpis",
         ".app-footer",
@@ -98,7 +99,8 @@ def test_element_fits_inside_viewport(screen: App, selector: str) -> None:
 def test_header_and_controls_do_not_overlap(screen: App) -> None:
     page = screen.page
     assert not _overlap(_box(page, "h1.brand"), _box(page, "#theme-select"))
-    assert not _overlap(_box(page, "#location-input"), _box(page, "#range-select"))
+    assert not _overlap(_box(page, ".field-location"), _box(page, ".field-range"))
+    assert not _overlap(_box(page, ".field-range"), _box(page, ".field-units"))
 
 
 def test_sticky_controls_sit_flush_under_header_when_scrolled(screen: App) -> None:
@@ -117,7 +119,7 @@ def test_sticky_controls_sit_flush_under_header_when_scrolled(screen: App) -> No
 
 def test_interactive_targets_meet_minimum_size(screen: App) -> None:
     page = screen.page
-    for selector in ("#theme-select", "#location-input", "#range-select"):
+    for selector in ("#theme-select", "#location-input", "#locate", '[data-range="1w"]'):
         box = _box(page, selector)
         assert box["height"] >= MIN_TARGET_PX, f"{selector} is only {box['height']:.0f}px tall"
         assert box["width"] >= MIN_TARGET_PX, f"{selector} is only {box['width']:.0f}px wide"
@@ -142,7 +144,7 @@ def test_suggestions_dropdown_fits_viewport(screen: App) -> None:
     # Must draw above the chart card, not behind it.
     top = page.evaluate(
         """() => {
-            const li = document.querySelector('#location-suggestions li');
+            const li = document.querySelector('#location-suggestions li[role=option]');
             const r = li.getBoundingClientRect();
             return document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2) === li;
         }"""

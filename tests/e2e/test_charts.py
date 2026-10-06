@@ -107,7 +107,7 @@ def test_table_view_survives_range_change_and_shows_daily_columns(app: App) -> N
         ["Time", "US AQI", "PM2.5 (µg/m³)", "PM10 (µg/m³)"]
     )
 
-    app.page.select_option("#range-select", "3m")
+    app.page.locator('[data-range="3m"]').click()
     expect(card.locator("thead th").first).to_have_text("Date")
     expect(card.locator("tbody tr")).to_have_count(90)
 
@@ -118,7 +118,7 @@ def test_refetch_keeps_previous_render_dimmed(app: App) -> None:
     height = page.evaluate("() => document.documentElement.scrollHeight")
 
     app.mock.hold = True
-    page.select_option("#range-select", "2w")
+    page.locator('[data-range="2w"]').click()
     expect(page.locator("body")).to_have_class("is-loading")
     expect(page.locator("#loading")).to_be_visible()
     expect(page.locator("#status")).to_be_hidden()

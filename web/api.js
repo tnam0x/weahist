@@ -35,17 +35,69 @@ const RANGE_DAYS = {
   "1y": 365,
 };
 
-/** Resolve a preset key into { start, end, granularity }. End = today. */
-export function resolveRange(rangeKey) {
-  const days = RANGE_DAYS[rangeKey] ?? RANGE_DAYS["1w"];
+export const RANGE_LABELS = {
+  "1d": "Last 24 hours",
+  "3d": "Last 3 days",
+  "1w": "Last 7 days",
+  "2w": "Last 2 weeks",
+  "1m": "Last 30 days",
+  "3m": "Last 3 months",
+  "6m": "Last 6 months",
+  "1y": "Last 1 year",
+};
+
+export const MAX_CUSTOM_DAYS = 366;
+const EARLIEST_DATE = "1940-01-01"; // start of the ERA5 archive
+
+/** Ranges longer than this are fetched and shown as daily values. */
+const HOURLY_MAX_DAYS = 30;
+
+/**
+ * Resolve a preset key ("1w") or a custom `{ start, end }` ("YYYY-MM-DD")
+ * into { start, end, granularity }. Presets end today.
+ */
+export function resolveRange(range) {
+  if (range && typeof range === "object") {
+    const days = daysBetween(range.start, range.end) + 1;
+    return {
+      start: range.start,
+      end: range.end,
+      granularity: days > HOURLY_MAX_DAYS ? "daily" : "hourly",
+    };
+  }
+  const days = RANGE_DAYS[range] ?? RANGE_DAYS["1w"];
   const end = new Date();
   const start = new Date(end);
   start.setDate(start.getDate() - (days - 1));
   return {
     start: ymd(start),
     end: ymd(end),
-    granularity: days > 30 ? "daily" : "hourly",
+    granularity: days > HOURLY_MAX_DAYS ? "daily" : "hourly",
   };
+}
+
+/** Error message for an invalid custom range, or null when it's usable. */
+export function validateCustomRange(start, end) {
+  const isDate = (s) => /^\d{4}-\d{2}-\d{2}$/.test(s || "");
+  if (!isDate(start) || !isDate(end)) return "Pick both a start and an end date.";
+  if (start > end) return "The start date must be on or before the end date.";
+  const today = ymd(new Date());
+  if (end > today) return "The end date can't be in the future.";
+  if (start < EARLIEST_DATE) return "Data is only available from 1940 onwards.";
+  if (daysBetween(start, end) + 1 > MAX_CUSTOM_DAYS) {
+    return `Pick at most ${MAX_CUSTOM_DAYS} days.`;
+  }
+  return null;
+}
+
+function daysBetween(a, b) {
+  const ms = new Date(`${b}T12:00:00Z`) - new Date(`${a}T12:00:00Z`);
+  return Math.round(ms / 86_400_000);
+}
+
+/** Today's date as "YYYY-MM-DD" in the browser's timezone. */
+export function todayYmd() {
+  return ymd(new Date());
 }
 
 function ymd(d) {
@@ -261,8 +313,8 @@ function resampleHourlyToDaily(block) {
  * Returns { location, start, end, granularity, times, weather, aqi, aqiCoverage }.
  * Times are local to the location (Open-Meteo returns them already in `timezone`).
  */
-export async function fetchHistory(location, rangeKey, { signal } = {}) {
-  const { start, end, granularity } = resolveRange(rangeKey);
+export async function fetchHistory(location, range, { signal } = {}) {
+  const { start, end, granularity } = resolveRange(range);
 
   // Fetch in parallel; AQI failures are absorbed inside fetchAirQuality.
   const [weather, aqi] = await Promise.all([

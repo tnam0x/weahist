@@ -30,7 +30,7 @@ export function buildCharts(history, theme) {
       low: w.temperature_2m_min,
       high: w.temperature_2m_max,
       color: p.tempLine,
-      unit: " °C",
+      unit: ` ${history.tempUnit ?? "°C"}`,
       digits: 1,
     }),
     humidity: seriesChart(ctx, {

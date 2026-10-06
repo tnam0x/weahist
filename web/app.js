@@ -1,16 +1,24 @@
 // Weather History — pure-static frontend.
 // Calls Open-Meteo directly from the browser; no backend required.
 
-import { geocode, fetchHistory } from "./api.js";
+import {
+  RANGE_LABELS,
+  fetchHistory,
+  geocode,
+  todayYmd,
+  validateCustomRange,
+} from "./api.js";
 import { aqiBand } from "./aqi.js";
 import { NARROW_BREAKPOINT, buildCharts, visibleAqiBands } from "./chart.js";
 
 const PREFS_KEY = "weahist.prefs.v1";
 const DEFAULTS = {
   location: "Hanoi, Vietnam",
-  range: "1w",
+  range: "1w", // a RANGE_LABELS key, or "custom" (uses start/end)
   theme: "system", // "system" | "light" | "dark"
+  units: "c", // "c" | "f"
 };
+const MAX_RECENT = 5;
 const FETCH_TIMEOUT_MS = 30_000;
 
 // ---- Preferences ------------------------------------------------------
@@ -35,7 +43,21 @@ const prefs = loadPrefs();
 const urlParams = new URLSearchParams(window.location.search);
 if (urlParams.get("location")) prefs.location = urlParams.get("location");
 if (urlParams.get("range")) prefs.range = urlParams.get("range");
+if (urlParams.get("start") && urlParams.get("end")) {
+  prefs.range = "custom";
+  prefs.start = urlParams.get("start");
+  prefs.end = urlParams.get("end");
+}
 if (urlParams.get("theme")) prefs.theme = urlParams.get("theme");
+if (["c", "f"].includes(urlParams.get("units"))) prefs.units = urlParams.get("units");
+// Fall back to the default preset if the saved/shared range is unusable.
+if (
+  prefs.range === "custom"
+    ? validateCustomRange(prefs.start, prefs.end) !== null
+    : !(prefs.range in RANGE_LABELS)
+) {
+  prefs.range = DEFAULTS.range;
+}
 
 // ---- Theme ------------------------------------------------------------
 const themeSelect = document.getElementById("theme-select");
@@ -87,7 +109,14 @@ const cards = Object.fromEntries(
 
 // ---- Controls ---------------------------------------------------------
 const locInput = document.getElementById("location-input");
-const rangeSelect = document.getElementById("range-select");
+const rangeChips = [...document.querySelectorAll("#range-chips .chip")];
+const customToggle = document.getElementById("custom-toggle");
+const customForm = document.getElementById("custom-range");
+const customStart = document.getElementById("custom-start");
+const customEnd = document.getElementById("custom-end");
+const customError = document.getElementById("custom-error");
+const unitChips = [...document.querySelectorAll("#units .chip")];
+const locateBtn = document.getElementById("locate");
 const suggestionsEl = document.getElementById("location-suggestions");
 const statusEl = document.getElementById("status");
 const kpisEl = document.getElementById("kpis");
@@ -98,13 +127,189 @@ const errorBanner = document.getElementById("error-banner");
 const errorBannerText = document.getElementById("error-banner-text");
 
 locInput.value = prefs.location;
-rangeSelect.value = prefs.range;
 
-rangeSelect.addEventListener("change", () => {
-  prefs.range = rangeSelect.value;
+// ---- Time range: preset chips + custom dates ----------------------------
+function syncRangeUI() {
+  for (const chip of rangeChips) {
+    const on = chip.dataset.range === prefs.range;
+    chip.setAttribute("aria-checked", String(on));
+    // Roving tabindex: only the checked chip (or the first) is tabbable.
+    chip.tabIndex = on || (prefs.range === "custom" && chip === rangeChips[0]) ? 0 : -1;
+  }
+  customToggle.setAttribute("aria-pressed", String(prefs.range === "custom"));
+}
+
+function selectRange(key) {
+  prefs.range = key;
+  delete prefs.start;
+  delete prefs.end;
   savePrefs(prefs);
+  syncRangeUI();
+  closeCustomForm();
+  refreshChart();
+}
+
+rangeChips.forEach((chip, i) => {
+  chip.addEventListener("click", () => selectRange(chip.dataset.range));
+  chip.addEventListener("keydown", (e) => {
+    const step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[e.key];
+    if (!step) return;
+    e.preventDefault();
+    const next = rangeChips[(i + step + rangeChips.length) % rangeChips.length];
+    next.focus();
+    selectRange(next.dataset.range);
+  });
+});
+
+function openCustomForm() {
+  const today = todayYmd();
+  customStart.max = today;
+  customEnd.max = today;
+  customStart.min = "1940-01-01";
+  customEnd.min = "1940-01-01";
+  const current = lastHistory ?? null;
+  customStart.value = prefs.start ?? current?.start ?? "";
+  customEnd.value = prefs.end ?? current?.end ?? today;
+  customError.textContent = "";
+  customForm.hidden = false;
+  customToggle.setAttribute("aria-expanded", "true");
+  customStart.focus();
+}
+function closeCustomForm() {
+  customForm.hidden = true;
+  customToggle.setAttribute("aria-expanded", "false");
+}
+
+customToggle.addEventListener("click", () => {
+  if (customForm.hidden) openCustomForm();
+  else closeCustomForm();
+});
+customForm.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") {
+    closeCustomForm();
+    customToggle.focus();
+  }
+});
+customForm.addEventListener("submit", (e) => {
+  e.preventDefault();
+  const error = validateCustomRange(customStart.value, customEnd.value);
+  customError.textContent = error ?? "";
+  if (error) return;
+  prefs.range = "custom";
+  prefs.start = customStart.value;
+  prefs.end = customEnd.value;
+  savePrefs(prefs);
+  syncRangeUI();
+  closeCustomForm();
   refreshChart();
 });
+
+syncRangeUI();
+
+/** What to pass to fetchHistory: a preset key or { start, end }. */
+function currentRange() {
+  return prefs.range === "custom" ? { start: prefs.start, end: prefs.end } : prefs.range;
+}
+function currentRangeLabel() {
+  return prefs.range === "custom"
+    ? `${formatDate(prefs.start)} – ${formatDate(prefs.end)}`
+    : RANGE_LABELS[prefs.range];
+}
+
+// ---- Units --------------------------------------------------------------
+function syncUnitsUI() {
+  for (const chip of unitChips) {
+    const on = chip.dataset.units === prefs.units;
+    chip.setAttribute("aria-checked", String(on));
+    chip.tabIndex = on ? 0 : -1;
+  }
+}
+unitChips.forEach((chip) => {
+  chip.addEventListener("click", () => setUnits(chip.dataset.units));
+  chip.addEventListener("keydown", (e) => {
+    if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(e.key)) return;
+    e.preventDefault();
+    const other = unitChips.find((c) => c !== chip);
+    other.focus();
+    setUnits(other.dataset.units);
+  });
+});
+function setUnits(units) {
+  if (prefs.units === units) return;
+  prefs.units = units;
+  savePrefs(prefs);
+  syncUnitsUI();
+  if (lastHistory) {
+    renderKpis(lastHistory);
+    renderCharts(lastHistory);
+  }
+}
+syncUnitsUI();
+
+const TEMP_COLUMNS = ["temperature_2m", "temperature_2m_mean", "temperature_2m_min", "temperature_2m_max"];
+
+/** The history with temperatures in the user's unit, plus `tempUnit`. */
+function withUnits(history) {
+  if (prefs.units !== "f") return { ...history, tempUnit: "°C" };
+  const weather = { ...history.weather };
+  for (const col of TEMP_COLUMNS) {
+    if (weather[col]) weather[col] = weather[col].map((v) => (v == null ? v : (v * 9) / 5 + 32));
+  }
+  return { ...history, weather, tempUnit: "°F" };
+}
+
+// ---- My location ----------------------------------------------------------
+locateBtn.addEventListener("click", () => {
+  if (!navigator.geolocation) {
+    showErrorBanner("Location isn't available in this browser.");
+    return;
+  }
+  locateBtn.setAttribute("aria-busy", "true");
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      locateBtn.removeAttribute("aria-busy");
+      const { latitude, longitude } = pos.coords;
+      const loc = {
+        name: "My location",
+        country: "",
+        admin1: "",
+        latitude,
+        longitude,
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+        label: `My location (${latitude.toFixed(2)}, ${longitude.toFixed(2)})`,
+      };
+      useLocation(loc);
+    },
+    (err) => {
+      locateBtn.removeAttribute("aria-busy");
+      const reason =
+        err.code === err.PERMISSION_DENIED
+          ? "permission was denied"
+          : err.code === err.TIMEOUT
+          ? "it took too long"
+          : "your position is unavailable";
+      showErrorBanner(`Couldn't use your location: ${reason}.`);
+    },
+    { timeout: 10_000, maximumAge: 10 * 60_000 },
+  );
+});
+
+/** Switch to an already-resolved location and reload. */
+function useLocation(loc) {
+  selectedLocation = loc;
+  locInput.value = loc.label;
+  prefs.location = loc.label;
+  prefs.locationResolved = loc;
+  savePrefs(prefs);
+  hideSuggestions();
+  refreshChart();
+}
+
+function rememberLocation(loc) {
+  const recent = (prefs.recent || []).filter((r) => r.label !== loc.label);
+  prefs.recent = [loc, ...recent].slice(0, MAX_RECENT);
+  savePrefs(prefs);
+}
 
 // ---- Location autocomplete -------------------------------------------
 let acTimer = null;
@@ -121,7 +326,7 @@ function debounce(fn, ms) {
 
 async function searchLocations(q) {
   if (!q || q.trim().length < 2) {
-    hideSuggestions();
+    showRecent();
     return;
   }
   if (acAbort) acAbort.abort();
@@ -129,6 +334,7 @@ async function searchLocations(q) {
   acAbort = ctrl;
   try {
     acResults = await geocode(q, { count: 6, signal: ctrl.signal });
+    acHeading = null;
     renderSuggestions();
   } catch (err) {
     if (err.name !== "AbortError") {
@@ -137,34 +343,53 @@ async function searchLocations(q) {
     }
   }
 }
+let acHeading = null; // e.g. "Recent" above the list
 function renderSuggestions() {
   if (acResults.length === 0) {
     hideSuggestions();
     return;
   }
-  suggestionsEl.innerHTML = acResults
-    .map((r, i) =>
-      `<li data-idx="${i}" class="${i === acActive ? "active" : ""}">${escapeHtml(r.label)}</li>`,
-    )
-    .join("");
+  const head = acHeading
+    ? `<li class="suggestions-head" role="presentation">${escapeHtml(acHeading)}</li>`
+    : "";
+  suggestionsEl.innerHTML =
+    head +
+    acResults
+      .map(
+        (r, i) =>
+          `<li data-idx="${i}" role="option" aria-selected="${i === acActive}" class="${i === acActive ? "active" : ""}">${escapeHtml(r.label)}</li>`,
+      )
+      .join("");
   suggestionsEl.hidden = false;
+  locInput.setAttribute("aria-expanded", "true");
 }
 function hideSuggestions() {
   suggestionsEl.hidden = true;
   suggestionsEl.innerHTML = "";
   acActive = -1;
+  locInput.setAttribute("aria-expanded", "false");
+}
+function showRecent() {
+  if (acAbort) acAbort.abort();
+  acResults = prefs.recent || [];
+  acHeading = "Recent";
+  acActive = -1;
+  renderSuggestions();
 }
 function pickSuggestion(idx) {
   const r = acResults[idx];
-  if (!r) return;
-  selectedLocation = r;
-  locInput.value = r.label;
-  prefs.location = r.label;
-  prefs.locationResolved = r;
-  savePrefs(prefs);
-  hideSuggestions();
-  refreshChart();
+  if (r) useLocation(r);
 }
+
+locInput.addEventListener("focus", () => {
+  if (suggestionsEl.hidden) showRecent();
+});
+
+// Drop the "Recent" list as soon as a real query is typed, so a stale
+// entry can't be clicked while the search is still debouncing.
+locInput.addEventListener("input", () => {
+  if (acHeading && locInput.value.trim().length >= 2) hideSuggestions();
+});
 
 locInput.addEventListener(
   "input",
@@ -225,8 +450,10 @@ document.getElementById("reset-prefs").addEventListener("click", (e) => {
   localStorage.removeItem(PREFS_KEY);
   Object.assign(prefs, DEFAULTS);
   locInput.value = prefs.location;
-  rangeSelect.value = prefs.range;
   themeSelect.value = prefs.theme;
+  syncRangeUI();
+  syncUnitsUI();
+  closeCustomForm();
   selectedLocation = null;
   applyTheme();
   refreshChart();
@@ -263,10 +490,6 @@ let selectedLocation =
     ? prefs.locationResolved
     : null;
 
-function rangeLabel(key) {
-  const opt = rangeSelect.querySelector(`option[value="${key}"]`);
-  return opt ? opt.textContent : key;
-}
 function escapeHtml(s) {
   return String(s)
     .replace(/&/g, "&amp;")
@@ -287,12 +510,14 @@ const EMPTY_MESSAGES = {
 
 function cardSubtitle(key, history) {
   const daily = history.granularity === "daily";
-  if (key === "temperature") return daily ? "°C · daily low–high range and mean" : "°C · hourly";
+  const u = history.tempUnit;
+  if (key === "temperature") return daily ? `${u} · daily low–high range and mean` : `${u} · hourly`;
   if (key === "humidity") return daily ? "% · daily low–high range and mean" : "% · hourly";
   return daily ? "US AQI · daily mean" : "US AQI · hourly";
 }
 
-async function renderCharts(history) {
+async function renderCharts(rawHistory) {
+  const history = withUnits(rawHistory);
   const figs = buildCharts(history, effectiveTheme());
   const config = plotlyConfig();
   await Promise.all(
@@ -340,15 +565,16 @@ function renderBandLegend(listEl, values) {
 // ---- Table view (the accessible twin of each chart) ---------------------
 function tableColumns(key, history) {
   const w = history.weather;
+  const u = history.tempUnit;
   const daily = history.granularity === "daily";
   if (key === "temperature") {
     return daily
       ? [
-          ["Low (°C)", w.temperature_2m_min, 1],
-          ["Mean (°C)", w.temperature_2m_mean, 1],
-          ["High (°C)", w.temperature_2m_max, 1],
+          [`Low (${u})`, w.temperature_2m_min, 1],
+          [`Mean (${u})`, w.temperature_2m_mean, 1],
+          [`High (${u})`, w.temperature_2m_max, 1],
         ]
-      : [["Temperature (°C)", w.temperature_2m, 1]];
+      : [[`Temperature (${u})`, w.temperature_2m, 1]];
   }
   if (key === "humidity") {
     return daily
@@ -366,7 +592,8 @@ function tableColumns(key, history) {
   ];
 }
 
-function renderTable(key, history) {
+function renderTable(key, rawHistory) {
+  const history = withUnits(rawHistory);
   const columns = tableColumns(key, history);
   const table = el("table", "data-table");
   table.setAttribute("aria-label", `${cards[key].card.querySelector(".card-title").textContent} data`);
@@ -466,7 +693,7 @@ async function refreshChart() {
 
   // Only the first load gets a status line; refetches keep the previous
   // render (dimmed) so nothing jumps.
-  if (!lastHistory) statusEl.textContent = `Loading ${locText} (${rangeLabel(prefs.range)})…`;
+  if (!lastHistory) statusEl.textContent = `Loading ${locText} (${currentRangeLabel()})…`;
   hideErrorBanner();
 
   if (inFlight) inFlight.abort();
@@ -496,10 +723,11 @@ async function refreshChart() {
       prefs.locationResolved = location;
       savePrefs(prefs);
     }
-    const history = await fetchHistory(location, prefs.range, {
+    const history = await fetchHistory(location, currentRange(), {
       signal: ctrl.signal,
     });
     lastHistory = history;
+    rememberLocation(location);
     statusEl.textContent = "";
     renderHeading(history);
     renderKpis(history);
@@ -582,7 +810,9 @@ function kpiTile(key, label, value, sub) {
   return tile;
 }
 
-function renderKpis(history) {
+function renderKpis(rawHistory) {
+  const history = withUnits(rawHistory);
+  const u = history.tempUnit;
   const tiles = [];
   const temp = stats(history.weather, "temperature_2m", "temperature_2m");
   tiles.push(
@@ -590,8 +820,8 @@ function renderKpis(history) {
       ? kpiTile(
           "temperature",
           "Avg temperature",
-          `${temp.avg.toFixed(1)} °C`,
-          `Low ${temp.low.toFixed(1)} · High ${temp.high.toFixed(1)} °C`,
+          `${temp.avg.toFixed(1)} ${u}`,
+          `Low ${temp.low.toFixed(1)} · High ${temp.high.toFixed(1)} ${u}`,
         )
       : kpiTile("temperature", "Avg temperature", "—", "No data"),
   );

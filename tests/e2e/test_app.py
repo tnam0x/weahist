@@ -18,7 +18,7 @@ def test_default_view_renders_hanoi_last_7_days(app: App) -> None:
     page = app.page
 
     expect(page.locator("#location-input")).to_have_value("Hanoi, Vietnam")
-    expect(page.locator("#range-select")).to_have_value("1w")
+    expect(page.locator('[data-range="1w"]')).to_have_attribute("aria-checked", "true")
     expect(page.locator("#status")).to_have_text("")
     expect(page.locator("#error-banner")).to_be_hidden()
 
@@ -72,7 +72,7 @@ def test_loading_overlay_shown_while_fetching(app: App) -> None:
 
 def test_long_range_switches_to_daily(app: App) -> None:
     app.open()
-    app.page.select_option("#range-select", "3m")
+    app.page.locator('[data-range="3m"]').click()
     expect(app.page.locator("#range-subtitle")).to_have_text(
         "Dec 16, 2025 – Mar 15, 2026 · Daily · Asia/Bangkok"
     )
@@ -89,7 +89,7 @@ def test_long_range_switches_to_daily(app: App) -> None:
 
 def test_one_day_range_is_hourly(app: App) -> None:
     app.open()
-    app.page.select_option("#range-select", "1d")
+    app.page.locator('[data-range="1d"]').click()
     expect(app.page.locator("#kpis")).to_contain_text("24 hourly readings")
     assert app.heading()[1] == "Mar 15, 2026 · Hourly · Asia/Bangkok"
 
@@ -101,7 +101,7 @@ def test_autocomplete_lists_matches_and_keyboard_selects(app: App) -> None:
     app.open()
     page = app.page
     loc = page.locator("#location-input")
-    items = page.locator("#location-suggestions li")
+    items = page.locator("#location-suggestions li[role=option]")
 
     loc.fill("Lon")
     expect(items).to_have_text(
@@ -126,7 +126,7 @@ def test_autocomplete_mouse_selection(app: App) -> None:
     app.open()
     page = app.page
     page.locator("#location-input").fill("Tok")
-    page.locator("#location-suggestions li", has_text="Tokyo").click()
+    page.locator("#location-suggestions li[role=option]", has_text="Tokyo").click()
     expect(page.locator("#location-input")).to_have_value("Tokyo, Tokyo, Japan")
     expect(app.page.locator("#place-title")).to_have_text("Tokyo, Japan")
 
@@ -139,6 +139,10 @@ def test_autocomplete_needs_two_chars_and_hides_on_escape_or_outside_click(app: 
 
     loc.fill("L")
     page.wait_for_timeout(400)  # past the 250ms debounce
+    # One letter doesn't search; the list shows recent places instead.
+    expect(suggestions.locator(".suggestions-head")).to_have_text("Recent")
+    assert [c["name"] for c in app.mock.calls("geocoding")] != ["L"]
+    loc.press("Escape")
     expect(suggestions).to_be_hidden()
 
     loc.fill("Lo")
@@ -167,7 +171,7 @@ def test_suggestion_labels_are_html_escaped(app: App) -> None:
     app.mock.places = (*app.mock.places, evil)
     app.open()
     app.page.locator("#location-input").fill("<img")
-    item = app.page.locator("#location-suggestions li")
+    item = app.page.locator("#location-suggestions li[role=option]")
     expect(item).to_have_text("<img src=x onerror=window.__pwned=1>, Nowhere")
     assert app.page.locator("#location-suggestions img").count() == 0
     assert app.page.evaluate("() => window.__pwned") is None
@@ -274,15 +278,15 @@ def test_system_theme_follows_os_preference(app: App) -> None:
 def test_preferences_persist_across_reload(app: App) -> None:
     app.open()
     page = app.page
-    page.select_option("#range-select", "2w")
+    page.locator('[data-range="2w"]').click()
     page.select_option("#theme-select", "dark")
     page.locator("#location-input").fill("Lon")
-    page.locator("#location-suggestions li").first.click()
+    page.locator("#location-suggestions li[role=option]").first.click()
 
     page.reload()
     app.wait_for_chart()
     expect(page.locator("#location-input")).to_have_value("London, England, United Kingdom")
-    expect(page.locator("#range-select")).to_have_value("2w")
+    expect(page.locator('[data-range="2w"]')).to_have_attribute("aria-checked", "true")
     expect(page.locator("#theme-select")).to_have_value("dark")
     expect(page.locator("html")).to_have_attribute("data-theme", "dark")
     expect(app.page.locator("#place-title")).to_have_text("London, United Kingdom")
@@ -297,7 +301,7 @@ def test_url_params_override_saved_prefs(app: App) -> None:
     app.open("?location=Tokyo&range=1m&theme=dark")
     page = app.page
     expect(page.locator("#location-input")).to_have_value("Tokyo")
-    expect(page.locator("#range-select")).to_have_value("1m")
+    expect(page.locator('[data-range="1m"]')).to_have_attribute("aria-checked", "true")
     expect(page.locator("html")).to_have_attribute("data-theme", "dark")
     expect(app.page.locator("#place-title")).to_have_text("Tokyo, Japan")
     assert app.kpis()["coverage"]["sub"] == f"{30 * 24} hourly readings"
@@ -307,7 +311,7 @@ def test_corrupt_saved_prefs_fall_back_to_defaults(app: App) -> None:
     app.page.add_init_script(f"localStorage.setItem('{PREFS_KEY}', '{{not json')")
     app.open()
     expect(app.page.locator("#location-input")).to_have_value("Hanoi, Vietnam")
-    expect(app.page.locator("#range-select")).to_have_value("1w")
+    expect(app.page.locator('[data-range="1w"]')).to_have_attribute("aria-checked", "true")
 
 
 def test_reset_preferences(app: App) -> None:
@@ -315,7 +319,7 @@ def test_reset_preferences(app: App) -> None:
     page = app.page
     page.locator("#reset-prefs").click()
     expect(page.locator("#location-input")).to_have_value("Hanoi, Vietnam")
-    expect(page.locator("#range-select")).to_have_value("1w")
+    expect(page.locator('[data-range="1w"]')).to_have_attribute("aria-checked", "true")
     expect(page.locator("#theme-select")).to_have_value("system")
     expect(page.locator("#kpis")).to_contain_text("168 hourly readings")
     expect(app.page.locator("#place-title")).to_have_text("Hanoi, Vietnam")
