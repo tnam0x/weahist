@@ -76,6 +76,9 @@ def test_touch_targets_grow_on_coarse_pointers(make_app: Callable[..., App]) -> 
         "#custom-toggle",
         '[data-units="f"]',
         "#theme-select",
+        "#share",
+        "#download-csv",
+        '[data-chart="aqi"] [data-action="png"]',
     ):
         box = page.locator(selector).bounding_box()
         assert box is not None

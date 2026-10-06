@@ -176,14 +176,24 @@ a:hover {
 }
 
 .brand {
+  min-width: 0;
   font-size: var(--fs-lg);
   font-weight: 600;
   margin: 0;
   letter-spacing: -0.01em;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (max-width: 400px) {
+  .brand {
+    font-size: var(--fs-md);
+  }
 }
 
 .header-actions {
+  flex: none;
   display: flex;
   align-items: center;
   gap: var(--sp-2);
@@ -549,6 +559,11 @@ main.bar {
 
 /* Page heading (place + period) */
 .page-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--sp-2) var(--sp-3);
   margin-bottom: var(--sp-3);
 }
 .page-title {
@@ -595,6 +610,46 @@ main.bar {
   margin: 0;
   font-size: var(--fs-xs);
   color: var(--text-2);
+}
+
+.card-actions {
+  display: flex;
+  flex: none;
+  gap: var(--sp-1);
+}
+
+.header-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: var(--control-h);
+  font-size: var(--fs-sm);
+}
+@media (max-width: 640px) {
+  .header-btn .btn-label {
+    display: none;
+  }
+  .header-btn {
+    width: var(--control-h);
+    justify-content: center;
+    padding: 0;
+  }
+}
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: var(--sp-5);
+  z-index: 60;
+  transform: translateX(-50%);
+  max-width: calc(100vw - 2 * var(--page-pad));
+  padding: var(--sp-2) var(--sp-4);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  color: var(--surface);
+  background: var(--text);
+  border-radius: var(--radius);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);
 }
 
 .band-legend {

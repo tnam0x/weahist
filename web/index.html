@@ -41,6 +41,15 @@
         <div class="bar">
           <h1 class="brand">🌤 Weather History</h1>
           <div class="header-actions">
+            <button type="button" id="share" class="btn-ghost header-btn" aria-label="Share this view">
+              <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+                <circle cx="18" cy="5" r="3" fill="none" stroke="currentColor" stroke-width="2" />
+                <circle cx="6" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="2" />
+                <circle cx="18" cy="19" r="3" fill="none" stroke="currentColor" stroke-width="2" />
+                <path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4" stroke="currentColor" stroke-width="2" />
+              </svg>
+              <span class="btn-label">Share</span>
+            </button>
             <select id="theme-select" class="theme-select" aria-label="Theme">
               <option value="system">🖥 System</option>
               <option value="light">☀ Light</option>
@@ -124,8 +133,13 @@
     <main class="bar">
       <div id="status" class="status" role="status"></div>
       <header class="page-head">
-        <h2 id="place-title" class="page-title"></h2>
-        <p id="range-subtitle" class="page-sub"></p>
+        <div>
+          <h2 id="place-title" class="page-title"></h2>
+          <p id="range-subtitle" class="page-sub"></p>
+        </div>
+        <button type="button" id="download-csv" class="btn-ghost" hidden>
+          Download CSV
+        </button>
       </header>
       <section id="kpis" class="kpis" aria-label="Summary" hidden></section>
       <section id="charts" class="charts" aria-label="Charts">
@@ -135,9 +149,14 @@
               <h3 class="card-title">Temperature</h3>
               <p class="card-sub">°C</p>
             </div>
-            <button type="button" class="btn-ghost" data-action="table" aria-pressed="false">
-              Table
-            </button>
+            <div class="card-actions">
+              <button type="button" class="btn-ghost" data-action="png" aria-label="Download chart as PNG">
+                PNG
+              </button>
+              <button type="button" class="btn-ghost" data-action="table" aria-pressed="false">
+                Table
+              </button>
+            </div>
           </header>
           <div class="chart-wrap">
             <div id="chart-temperature" class="chart"></div>
@@ -151,9 +170,14 @@
               <h3 class="card-title">Relative humidity</h3>
               <p class="card-sub">%</p>
             </div>
-            <button type="button" class="btn-ghost" data-action="table" aria-pressed="false">
-              Table
-            </button>
+            <div class="card-actions">
+              <button type="button" class="btn-ghost" data-action="png" aria-label="Download chart as PNG">
+                PNG
+              </button>
+              <button type="button" class="btn-ghost" data-action="table" aria-pressed="false">
+                Table
+              </button>
+            </div>
           </header>
           <div class="chart-wrap">
             <div id="chart-humidity" class="chart"></div>
@@ -168,9 +192,14 @@
               <p class="card-sub">US AQI</p>
               <ul class="band-legend" aria-label="AQI categories" hidden></ul>
             </div>
-            <button type="button" class="btn-ghost" data-action="table" aria-pressed="false">
-              Table
-            </button>
+            <div class="card-actions">
+              <button type="button" class="btn-ghost" data-action="png" aria-label="Download chart as PNG">
+                PNG
+              </button>
+              <button type="button" class="btn-ghost" data-action="table" aria-pressed="false">
+                Table
+              </button>
+            </div>
           </header>
           <div class="chart-wrap">
             <div id="chart-aqi" class="chart"></div>
@@ -180,6 +209,8 @@
         </article>
       </section>
     </main>
+
+    <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 
     <footer class="app-footer">
       <div>

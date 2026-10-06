@@ -2,37 +2,31 @@
 
 A small web app to explore the recent **weather** and **air-quality** history of any place on Earth.
 
-Type a city, pick a time range, and get an interactive chart that shows what the weather and the air were really like — no sign-up, no API key, no setup.
+Type a city, pick a time range, and get interactive charts that show what the weather and the air were really like — no sign-up, no API key, no setup. Works on phones, tablets and desktops, in light and dark themes.
 
 ## What it shows
 
 For any location you choose:
 
-- **Temperature** over time, with the daily max and min highlighted.
-- **Relative humidity** plotted on the same panel as a second line.
-- **Air Quality Index** (US AQI) with the official EPA color bands behind the line — Good, Moderate, Unhealthy for Sensitive Groups, Unhealthy, Very Unhealthy, Hazardous.
-- The **max and min AQI** of the period, each labeled with its category.
-- A small summary card with the granularity (hourly / daily), number of observations, peak/min temperature, peak AQI, and how much of the requested period actually has AQI data.
-
-Weekends are gently shaded and day boundaries are marked, so it's easy to read at a glance.
+- **Summary tiles**: average temperature and humidity with their low/high, the **peak AQI** with its category and the EPA's health advice, and how much of the period has AQI data.
+- **Three aligned chart cards** — temperature, relative humidity and US AQI — each on its own axis and sharing the same time axis:
+  - the max and min of each series are labeled;
+  - daily views show the **low–high range as a band** with the mean line on top;
+  - the AQI card draws the official EPA color bands (Good → Hazardous) behind the line.
+- Hovering (or tapping) one chart shows the same moment in all three; zooming one zooms them all.
+- Weekends are gently shaded and day boundaries are marked on hourly views.
+- Every chart has a **Table** view with the exact numbers.
 
 ## What you can do
 
-- **Search any city in the world** with a free-text box that suggests matches as you type.
-- **Pick a time range** from quick presets:
-  - Last 24 hours
-  - Last 3 days
-  - Last 7 days *(default)*
-  - Last 2 weeks
-  - Last 30 days
-  - Last 3 months
-  - Last 6 months
-  - Last 1 year
-
-  Long ranges automatically switch to a daily view so the chart stays readable.
-- **Choose a theme**: 🖥 System (follows your OS), ☀ Light, or 🌙 Dark. The chart re-styles itself to match.
-- **Your settings are remembered** — last location, range, and theme are restored next time you open the page.
-- **Share a view**: append `?location=…&range=…&theme=…` to the URL and the page will load with those settings.
+- **Search any city in the world** with suggestions as you type, or use **📍 my location**.
+- **Recent places**: focus the location box to jump back to your last five places.
+- **Pick a time range** with one tap — 24h, 3d, 7d *(default)*, 2w, 30d, 3m, 6m, 1y — or a **custom date range** of up to 366 days. Ranges over 30 days switch to a daily view.
+- **Switch units** between °C and °F.
+- **Choose a theme**: 🖥 System (follows your OS), ☀ Light, or 🌙 Dark.
+- **Share** the current view as a link (copied to the clipboard, or the native share sheet on phones).
+- **Download** the data as CSV, or any chart as a PNG.
+- **Your settings are remembered** — location, range, units and theme are restored next time. Links accept `?location=…&range=…` (or `&start=YYYY-MM-DD&end=YYYY-MM-DD`), `&units=f` and `&theme=dark`.
 
 ## Where the data comes from
 

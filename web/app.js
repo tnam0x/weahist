@@ -101,6 +101,7 @@ const cards = Object.fromEntries(
         empty: card.querySelector(".card-empty"),
         sub: card.querySelector(".card-sub"),
         toggle: card.querySelector('[data-action="table"]'),
+        png: card.querySelector('[data-action="png"]'),
         legend: card.querySelector(".band-legend"),
       },
     ];
@@ -528,6 +529,7 @@ async function renderCharts(rawHistory) {
       if (c.legend) renderBandLegend(c.legend, fig ? history.aqi.us_aqi : null);
       c.empty.hidden = Boolean(fig);
       c.toggle.hidden = !fig;
+      c.png.hidden = !fig;
       if (!fig) {
         c.empty.textContent = EMPTY_MESSAGES[key];
         c.wrap.hidden = true;
@@ -627,6 +629,129 @@ for (const key of CHART_KEYS) {
     c.table.hidden = !show;
     c.wrap.hidden = show;
     if (!show && c.chart._fullLayout) Plotly.Plots.resize(c.chart);
+  });
+}
+
+// ---- Share & export -----------------------------------------------------
+const shareBtn = document.getElementById("share");
+const csvBtn = document.getElementById("download-csv");
+const toastEl = document.getElementById("toast");
+
+let toastTimer = null;
+function showToast(message) {
+  toastEl.textContent = message;
+  toastEl.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => {
+    toastEl.hidden = true;
+  }, 2500);
+}
+
+/** A link that reopens exactly the current view. */
+function shareUrl() {
+  const params = new URLSearchParams();
+  params.set("location", prefs.location);
+  if (prefs.range === "custom") {
+    params.set("start", prefs.start);
+    params.set("end", prefs.end);
+  } else {
+    params.set("range", prefs.range);
+  }
+  if (prefs.units !== DEFAULTS.units) params.set("units", prefs.units);
+  if (prefs.theme !== DEFAULTS.theme) params.set("theme", prefs.theme);
+  return `${window.location.origin}${window.location.pathname}?${params}`;
+}
+
+shareBtn.addEventListener("click", async () => {
+  const url = shareUrl();
+  const coarse = window.matchMedia("(pointer: coarse)").matches;
+  if (coarse && navigator.share) {
+    try {
+      await navigator.share({ title: document.title, url });
+    } catch (err) {
+      if (err.name !== "AbortError") showToast("Couldn't open the share sheet.");
+    }
+    return;
+  }
+  try {
+    await navigator.clipboard.writeText(url);
+    showToast("Link copied");
+  } catch {
+    showToast("Couldn't copy — use the link in the address bar.");
+    history.replaceState(null, "", url);
+  }
+});
+
+function fileSlug(history) {
+  const place = (history.location.name || "location")
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+  return `weahist-${place || "location"}-${history.start}_${history.end}`;
+}
+
+function csvCell(v) {
+  if (v == null || (typeof v === "number" && !Number.isFinite(v))) return "";
+  const text = String(v);
+  return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+}
+
+function buildCsv(rawHistory) {
+  const history = withUnits(rawHistory);
+  const u = history.tempUnit === "°F" ? "F" : "C";
+  const w = history.weather;
+  const columns =
+    history.granularity === "daily"
+      ? [
+          [`temperature_min_${u}`, w.temperature_2m_min],
+          [`temperature_mean_${u}`, w.temperature_2m_mean],
+          [`temperature_max_${u}`, w.temperature_2m_max],
+          ["humidity_min_pct", w.relative_humidity_2m_min],
+          ["humidity_mean_pct", w.relative_humidity_2m_mean],
+          ["humidity_max_pct", w.relative_humidity_2m_max],
+        ]
+      : [
+          [`temperature_${u}`, w.temperature_2m],
+          ["humidity_pct", w.relative_humidity_2m],
+        ];
+  columns.push(
+    ["us_aqi", history.aqi.us_aqi],
+    ["pm2_5_ugm3", history.aqi.pm2_5],
+    ["pm10_ugm3", history.aqi.pm10],
+  );
+  const round = (v) => (typeof v === "number" ? Math.round(v * 100) / 100 : v);
+  const lines = [["time", ...columns.map(([name]) => name)].join(",")];
+  history.times.forEach((t, i) => {
+    lines.push([t, ...columns.map(([, values]) => round(values?.[i]))].map(csvCell).join(","));
+  });
+  return `${lines.join("\n")}\n`;
+}
+
+csvBtn.addEventListener("click", () => {
+  if (!lastHistory) return;
+  const blob = new Blob([buildCsv(lastHistory)], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = el("a");
+  a.href = url;
+  a.download = `${fileSlug(lastHistory)}.csv`;
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+});
+
+for (const key of CHART_KEYS) {
+  cards[key].png.addEventListener("click", () => {
+    const c = cards[key];
+    if (!lastHistory || !c.chart._fullLayout) return;
+    Plotly.downloadImage(c.chart, {
+      format: "png",
+      filename: `${fileSlug(lastHistory)}-${key}`,
+      width: 1200,
+      height: 400,
+      scale: 2,
+    });
   });
 }
 
@@ -731,6 +856,7 @@ async function refreshChart() {
     statusEl.textContent = "";
     renderHeading(history);
     renderKpis(history);
+    csvBtn.hidden = false;
     await renderCharts(history);
   } catch (err) {
     if (err.name === "AbortError" && ctrl.signal.reason?.name !== "TimeoutError") {
