@@ -179,6 +179,7 @@ class OpenMeteoMock:
                 },
             }
         mean = [round(place.base_temp + 3 * math.sin(d.toordinal()), 2) for d in days]
+        humid = [round(70 + 5 * math.cos(d.toordinal()), 2) for d in days]
         return {
             "timezone": place.timezone,
             "daily": {
@@ -186,6 +187,9 @@ class OpenMeteoMock:
                 "temperature_2m_max": [m + 5 for m in mean],
                 "temperature_2m_min": [m - 5 for m in mean],
                 "temperature_2m_mean": mean,
+                "relative_humidity_2m_mean": humid,
+                "relative_humidity_2m_max": [h + 10 for h in humid],
+                "relative_humidity_2m_min": [h - 10 for h in humid],
             },
         }
 

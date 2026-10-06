@@ -82,7 +82,7 @@ def test_no_horizontal_scroll(screen: App) -> None:
         "#location-input",
         "#range-select",
         ".chart-wrap",
-        "#summary",
+        "#kpis",
         ".app-footer",
     ],
 )
@@ -123,9 +123,9 @@ def test_interactive_targets_meet_minimum_size(screen: App) -> None:
         assert box["width"] >= MIN_TARGET_PX, f"{selector} is only {box['width']:.0f}px wide"
 
 
-def test_summary_values_are_not_clipped(screen: App) -> None:
+def test_kpi_text_is_not_clipped(screen: App) -> None:
     clipped = screen.page.evaluate(
-        """() => [...document.querySelectorAll('#summary .summary-item > span')]
+        """() => [...document.querySelectorAll('#kpis .kpi > *')]
             .filter(el => el.scrollWidth > el.clientWidth + 1)
             .map(el => el.textContent)"""
     )
@@ -237,11 +237,9 @@ def test_chart_uses_compact_layout_below_breakpoint(screen: App) -> None:
     names = [t["name"] for t in screen.traces()]
     if _width(screen.page) < NARROW_BREAKPOINT:
         assert layout["legend"]["y"] < 0, "legend should move below the plot on phones"
-        assert layout["title"]["font"]["size"] == 13
         assert "Temp" in names
     else:
         assert layout["legend"]["y"] > 1, "legend should sit above the plot"
-        assert layout["title"]["font"]["size"] == 17
         assert "Temperature (°C)" in names
 
 
@@ -280,7 +278,7 @@ def test_dark_theme_on_phone(make_app: Callable[..., App]) -> None:
         color_scheme="dark",
     ).open()
     expect(app.page.locator("html")).to_have_attribute("data-theme", "dark")
-    assert app.layout()["paper_bgcolor"] == "#161B22"
+    assert app.layout()["paper_bgcolor"] == "#1a1a19"
     scroll_w, client_w = app.page.evaluate(
         "() => [document.documentElement.scrollWidth, document.documentElement.clientWidth]"
     )

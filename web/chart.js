@@ -1,8 +1,9 @@
 // Builds a Plotly figure from a merged history payload.
-// Mirrors src/weahist/visualization/plotly_renderer.py.
+// Started as a port of src/weahist/visualization/plotly_renderer.py; the web
+// version has since diverged (HTML card titles, design-token palette).
 
 import { AQI_BANDS, aqiCategory, aqiMax } from "./aqi.js";
-import { paletteFor } from "./theme.js";
+import { FONT_FAMILY, paletteFor } from "./theme.js";
 
 /**
  * @param {object} history result of fetchHistory()
@@ -11,7 +12,7 @@ import { paletteFor } from "./theme.js";
  */
 export function buildFigure(history, theme) {
   const p = paletteFor(theme);
-  const { location, start, end, granularity, times, weather, aqi } = history;
+  const { location, times, weather, aqi } = history;
   const isNarrow =
     typeof window !== "undefined" && window.innerWidth < 640;
 
@@ -21,7 +22,12 @@ export function buildFigure(history, theme) {
       : "temperature_2m_mean" in weather
       ? "temperature_2m_mean"
       : null;
-  const humidCol = "relative_humidity_2m" in weather ? "relative_humidity_2m" : null;
+  const humidCol =
+    "relative_humidity_2m" in weather
+      ? "relative_humidity_2m"
+      : "relative_humidity_2m_mean" in weather
+      ? "relative_humidity_2m_mean"
+      : null;
   const hasAqi = aqi.us_aqi && aqi.us_aqi.some((v) => v != null && Number.isFinite(v));
 
   // Subplot domains (Plotly y-domains are bottom-up; row 1 on top).
@@ -30,11 +36,11 @@ export function buildFigure(history, theme) {
     template: { layout: { paper_bgcolor: p.paperBg, plot_bgcolor: p.plotBg } },
     paper_bgcolor: p.paperBg,
     plot_bgcolor: p.plotBg,
-    font: { color: p.text },
+    font: { color: p.text, family: FONT_FAMILY },
     hovermode: "x unified",
     margin: isNarrow
-      ? { t: 70, r: 55, b: 80, l: 50 }
-      : { t: 110, r: 70, b: 60, l: 70 },
+      ? { t: 16, r: 55, b: 80, l: 50 }
+      : { t: 48, r: 70, b: 60, l: 70 },
     legend: isNarrow
       ? {
           orientation: "h",
@@ -62,21 +68,6 @@ export function buildFigure(history, theme) {
   };
 
   const tzAxisTitle = `Time (${location.timezone})`;
-  const titleText =
-    `Weather & Air Quality — ${location.name}` +
-    (location.country ? `, ${location.country}` : "");
-  const granularityLabel =
-    granularity.charAt(0).toUpperCase() + granularity.slice(1);
-  const subtitle = `${start} → ${end} · ${granularityLabel} · source: Open-Meteo`;
-
-  layout.title = {
-    text: `${titleText}<br><sub>${subtitle}</sub>`,
-    x: 0.02,
-    xanchor: "left",
-    y: 0.97,
-    yanchor: "top",
-    font: { color: p.text, size: isNarrow ? 13 : 17 },
-  };
 
   const data = [];
 
@@ -275,7 +266,7 @@ function addTimeDecorations(layout, times, p, hasAqi) {
         x1: x,
         y0: 0,
         y1: 1,
-        line: { color: p.daySeparator, width: 1, dash: "dot" },
+        line: { color: p.daySeparator, width: 1 },
         layer: "below",
       });
     }
@@ -331,7 +322,7 @@ function annotateExtrema(layout, times, values, p, unit, opts = {}) {
       arrowcolor: item.color,
       ax: 0,
       ay: item.ay,
-      font: { size: fontSize, color: item.color },
+      font: { size: fontSize, color: p.text },
       bgcolor: p.annotationBg,
       bordercolor: item.color,
       borderwidth: 1,

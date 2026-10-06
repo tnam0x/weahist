@@ -7,7 +7,7 @@ from typing import Any
 
 from playwright.sync_api import expect
 
-from tests.e2e.conftest import PREFS_KEY, App, title_text
+from tests.e2e.conftest import PREFS_KEY, App
 from tests.e2e.openmeteo_mock import Place
 
 # ---- Initial load --------------------------------------------------------
@@ -22,19 +22,23 @@ def test_default_view_renders_hanoi_last_7_days(app: App) -> None:
     expect(page.locator("#status")).to_have_text("")
     expect(page.locator("#error-banner")).to_be_hidden()
 
-    title = title_text(app.layout())
-    assert "Weather & Air Quality — Hanoi, Vietnam" in title
-    assert "2026-03-09 → 2026-03-15" in title
-    assert "Hourly" in title
-
-    assert app.summary() == {
-        "Granularity": "Hourly",
-        "Observations": "168",
-        "Max temp": "30.0 °C",
-        "Min temp": "20.0 °C",
-        "Max AQI": "70",
-        "Min AQI": "10",
-        "AQI coverage": "100%",
+    assert app.heading() == (
+        "Hanoi, Vietnam",
+        "Mar 9, 2026 – Mar 15, 2026 · Hourly · Asia/Bangkok",
+    )
+    assert app.kpis() == {
+        "temperature": {
+            "label": "Avg temperature",
+            "value": "25.0 °C",
+            "sub": "Low 20.0 · High 30.0 °C",
+        },
+        "humidity": {"label": "Avg humidity", "value": "70%", "sub": "Low 60 · High 80%"},
+        "aqi": {
+            "label": "Peak AQI (US)",
+            "value": "70Moderate",
+            "sub": "Unusually sensitive people should limit prolonged outdoor exertion.",
+        },
+        "coverage": {"label": "AQI coverage", "value": "100%", "sub": "168 hourly readings"},
     }
     names = [t["name"] for t in app.traces()]
     assert "AQI" in names
@@ -70,22 +74,25 @@ def test_loading_overlay_shown_while_fetching(app: App) -> None:
 def test_long_range_switches_to_daily(app: App) -> None:
     app.open()
     app.page.select_option("#range-select", "3m")
-    expect(app.page.locator("#summary")).to_contain_text("Daily")
+    expect(app.page.locator("#range-subtitle")).to_have_text(
+        "Dec 16, 2025 – Mar 15, 2026 · Daily · Asia/Bangkok"
+    )
     app.wait_for_chart()
 
-    summary = app.summary()
-    assert summary["Granularity"] == "Daily"
-    assert summary["Observations"] == "90"
-    assert summary["Max AQI"] == "40"  # daily mean of the synthetic wave
-    assert "2025-12-16 → 2026-03-15" in title_text(app.layout())
+    kpis = app.kpis()
+    assert kpis["coverage"]["sub"] == "90 daily readings"
+    assert kpis["aqi"]["value"] == "40Good"  # daily mean of the synthetic wave
+    # Daily low/high come from the min/max columns, not the daily mean.
+    assert kpis["temperature"]["sub"].startswith("Low 1")
+    assert kpis["humidity"]["value"] != "—"
     assert app.prefs()["range"] == "3m"  # type: ignore[index]
 
 
 def test_one_day_range_is_hourly(app: App) -> None:
     app.open()
     app.page.select_option("#range-select", "1d")
-    expect(app.page.locator("#summary")).to_contain_text("Observations24")
-    assert app.summary()["Granularity"] == "Hourly"
+    expect(app.page.locator("#kpis")).to_contain_text("24 hourly readings")
+    assert app.heading()[1] == "Mar 15, 2026 · Hourly · Asia/Bangkok"
 
 
 # ---- Location autocomplete ----------------------------------------------
@@ -112,8 +119,7 @@ def test_autocomplete_lists_matches_and_keyboard_selects(app: App) -> None:
 
     expect(page.locator("#location-suggestions")).to_be_hidden()
     expect(loc).to_have_value("London, England, United Kingdom")
-    expect(page.locator("#summary")).to_contain_text("15.0 °C")
-    assert "London, United Kingdom" in title_text(app.layout())
+    expect(app.page.locator("#place-title")).to_have_text("London, United Kingdom")
     assert app.prefs()["location"] == "London, England, United Kingdom"  # type: ignore[index]
 
 
@@ -123,8 +129,7 @@ def test_autocomplete_mouse_selection(app: App) -> None:
     page.locator("#location-input").fill("Tok")
     page.locator("#location-suggestions li", has_text="Tokyo").click()
     expect(page.locator("#location-input")).to_have_value("Tokyo, Tokyo, Japan")
-    expect(page.locator("#summary")).to_contain_text("17.0 °C")
-    assert "Tokyo, Japan" in title_text(app.layout())
+    expect(app.page.locator("#place-title")).to_have_text("Tokyo, Japan")
 
 
 def test_autocomplete_needs_two_chars_and_hides_on_escape_or_outside_click(app: App) -> None:
@@ -155,8 +160,7 @@ def test_free_text_enter_geocodes_and_loads(app: App) -> None:
     expect(app.page.locator("#location-suggestions")).to_be_visible()
     loc.press("Escape")
     loc.press("Enter")
-    expect(app.page.locator("#summary")).to_contain_text("17.0 °C")
-    assert "Tokyo, Japan" in title_text(app.layout())
+    expect(app.page.locator("#place-title")).to_have_text("Tokyo, Japan")
 
 
 def test_suggestion_labels_are_html_escaped(app: App) -> None:
@@ -197,16 +201,21 @@ def test_weather_api_failure_shows_error(app: App) -> None:
     expect(banner).to_contain_text("Failed to fetch data")
     expect(banner).to_contain_text("mock forecast failure")
     expect(app.page.locator("#loading")).to_be_hidden()
-    expect(app.page.locator("#summary")).to_be_hidden()
+    expect(app.page.locator("#kpis")).to_be_hidden()
 
 
 def test_air_quality_failure_still_renders_weather(app: App) -> None:
     app.mock.fail["air-quality"] = 503
     app.open()
     expect(app.page.locator("#error-banner")).to_be_hidden()
-    summary = app.summary()
-    assert summary["Max temp"] == "30.0 °C"
-    assert "Max AQI" not in summary
+    kpis = app.kpis()
+    assert kpis["temperature"]["value"] == "25.0 °C"
+    assert kpis["aqi"] == {
+        "label": "Peak AQI (US)",
+        "value": "—",
+        "sub": "No air-quality data for this period",
+    }
+    assert kpis["coverage"]["value"] == "0%"
     assert "AQI" not in [t["name"] for t in app.traces()]
 
 
@@ -229,15 +238,15 @@ def test_theme_switch_restyles_page_and_chart(app: App) -> None:
     page = app.page
     html = page.locator("html")
     expect(html).to_have_attribute("data-theme", "light")
-    assert app.layout()["paper_bgcolor"] == "#FFFFFF"
+    assert app.layout()["paper_bgcolor"] == "#fcfcfb"
 
     page.select_option("#theme-select", "dark")
     expect(html).to_have_attribute("data-theme", "dark")
     page.wait_for_function(
-        "() => document.getElementById('chart').layout.paper_bgcolor === '#161B22'"
+        "() => document.getElementById('chart').layout.paper_bgcolor === '#1a1a19'"
     )
     # Body background has a 0.2s CSS transition; to_have_css retries until it settles.
-    expect(page.locator("body")).to_have_css("background-color", "rgb(13, 17, 23)")
+    expect(page.locator("body")).to_have_css("background-color", "rgb(13, 13, 13)")
     assert app.prefs()["theme"] == "dark"  # type: ignore[index]
     # Re-theming reuses the cached history instead of refetching.
     assert len(app.mock.calls("forecast")) == 1
@@ -252,7 +261,7 @@ def test_system_theme_follows_os_preference(app: App) -> None:
     app.page.emulate_media(color_scheme="light")
     expect(app.page.locator("html")).to_have_attribute("data-theme", "light")
     app.page.wait_for_function(
-        "() => document.getElementById('chart').layout.paper_bgcolor === '#FFFFFF'"
+        "() => document.getElementById('chart').layout.paper_bgcolor === '#fcfcfb'"
     )
 
 
@@ -266,7 +275,6 @@ def test_preferences_persist_across_reload(app: App) -> None:
     page.select_option("#theme-select", "dark")
     page.locator("#location-input").fill("Lon")
     page.locator("#location-suggestions li").first.click()
-    expect(page.locator("#summary")).to_contain_text("15.0 °C")
 
     page.reload()
     app.wait_for_chart()
@@ -274,8 +282,8 @@ def test_preferences_persist_across_reload(app: App) -> None:
     expect(page.locator("#range-select")).to_have_value("2w")
     expect(page.locator("#theme-select")).to_have_value("dark")
     expect(page.locator("html")).to_have_attribute("data-theme", "dark")
-    assert "London, United Kingdom" in title_text(app.layout())
-    assert app.summary()["Observations"] == str(14 * 24)
+    expect(app.page.locator("#place-title")).to_have_text("London, United Kingdom")
+    assert app.kpis()["coverage"]["sub"] == f"{14 * 24} hourly readings"
 
 
 def test_url_params_override_saved_prefs(app: App) -> None:
@@ -288,8 +296,8 @@ def test_url_params_override_saved_prefs(app: App) -> None:
     expect(page.locator("#location-input")).to_have_value("Tokyo")
     expect(page.locator("#range-select")).to_have_value("1m")
     expect(page.locator("html")).to_have_attribute("data-theme", "dark")
-    assert "Tokyo, Japan" in title_text(app.layout())
-    assert app.summary()["Observations"] == str(30 * 24)
+    expect(app.page.locator("#place-title")).to_have_text("Tokyo, Japan")
+    assert app.kpis()["coverage"]["sub"] == f"{30 * 24} hourly readings"
 
 
 def test_corrupt_saved_prefs_fall_back_to_defaults(app: App) -> None:
@@ -306,5 +314,5 @@ def test_reset_preferences(app: App) -> None:
     expect(page.locator("#location-input")).to_have_value("Hanoi, Vietnam")
     expect(page.locator("#range-select")).to_have_value("1w")
     expect(page.locator("#theme-select")).to_have_value("system")
-    expect(page.locator("#summary")).to_contain_text("Observations168")
-    assert "Hanoi, Vietnam" in title_text(app.layout())
+    expect(page.locator("#kpis")).to_contain_text("168 hourly readings")
+    expect(app.page.locator("#place-title")).to_have_text("Hanoi, Vietnam")

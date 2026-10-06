@@ -14,7 +14,6 @@ observation counts are reproducible.
 from __future__ import annotations
 
 import functools
-import re
 import threading
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
@@ -119,7 +118,7 @@ class App:
         return self
 
     def wait_for_chart(self) -> None:
-        expect(self.page.locator("#summary")).to_be_visible()
+        expect(self.page.locator("#kpis")).to_be_visible()
         expect(self.page.locator("#loading")).to_be_hidden()
 
     def layout(self) -> dict[str, Any]:
@@ -132,13 +131,22 @@ class App:
             ".map(t => ({name: t.name, n: (t.x || []).length}))"
         )
 
-    def summary(self) -> dict[str, str]:
+    def heading(self) -> tuple[str, str]:
+        """(card title, subtitle) rendered above the chart."""
+        return (
+            self.page.locator("#place-title").inner_text(),
+            self.page.locator("#range-subtitle").inner_text(),
+        )
+
+    def kpis(self) -> dict[str, dict[str, str]]:
+        """KPI tiles keyed by ``data-kpi`` → {"label", "value", "sub"}."""
         return self.page.evaluate(  # type: ignore[no-any-return]
             """() => Object.fromEntries(
-                [...document.querySelectorAll('#summary .summary-item')].map(el => [
-                    el.querySelector('.summary-label').textContent,
-                    el.querySelector('.summary-value').textContent,
-                ]))"""
+                [...document.querySelectorAll('#kpis .kpi')].map(el => [el.dataset.kpi, {
+                    label: el.querySelector('.kpi-label').textContent,
+                    value: el.querySelector('.kpi-value').textContent,
+                    sub: el.querySelector('.kpi-sub').textContent,
+                }]))"""
         )
 
     def prefs(self) -> dict[str, Any] | None:
@@ -208,8 +216,3 @@ def make_app(
         ctx.close()
     for driver in drivers:
         assert driver.errors == [], f"uncaught JS errors: {driver.errors}"
-
-
-def title_text(layout: dict[str, Any]) -> str:
-    """Plain-text chart title (strips Plotly's ``<br><sub>`` markup)."""
-    return re.sub(r"<[^>]+>", " ", layout["title"]["text"])

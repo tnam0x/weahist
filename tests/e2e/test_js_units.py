@@ -113,6 +113,6 @@ def test_geocode_ignores_blank_query_without_network(js: Page) -> None:
 
 
 def test_palette_for_theme(js: Page) -> None:
-    assert call(js, "theme.js", "m.paletteFor('dark').paperBg") == "#161B22"
-    assert call(js, "theme.js", "m.paletteFor('light').paperBg") == "#FFFFFF"
-    assert call(js, "theme.js", "m.paletteFor('unknown').paperBg") == "#FFFFFF"
+    assert call(js, "theme.js", "m.paletteFor('dark').paperBg") == "#1a1a19"
+    assert call(js, "theme.js", "m.paletteFor('light').paperBg") == "#fcfcfb"
+    assert call(js, "theme.js", "m.paletteFor('unknown').paperBg") == "#fcfcfb"

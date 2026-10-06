@@ -2,6 +2,7 @@
 // Calls Open-Meteo directly from the browser; no backend required.
 
 import { geocode, fetchHistory } from "./api.js";
+import { aqiBand } from "./aqi.js";
 import { buildFigure } from "./chart.js";
 
 const PREFS_KEY = "weahist.prefs.v1";
@@ -69,7 +70,9 @@ const rangeSelect = document.getElementById("range-select");
 const suggestionsEl = document.getElementById("location-suggestions");
 const statusEl = document.getElementById("status");
 const chartEl = document.getElementById("chart");
-const summaryEl = document.getElementById("summary");
+const kpisEl = document.getElementById("kpis");
+const placeTitleEl = document.getElementById("place-title");
+const rangeSubtitleEl = document.getElementById("range-subtitle");
 const loadingEl = document.getElementById("loading");
 const errorBanner = document.getElementById("error-banner");
 const errorBannerText = document.getElementById("error-banner-text");
@@ -283,7 +286,7 @@ async function refreshChart() {
 
   statusEl.textContent = `Loading ${locText} (${rangeLabel(prefs.range)})…`;
   hideErrorBanner();
-  summaryEl.hidden = true;
+  kpisEl.hidden = true;
 
   if (inFlight) inFlight.abort();
   const ctrl = new AbortController();
@@ -319,7 +322,8 @@ async function refreshChart() {
     const fig = buildFigure(history, effectiveTheme());
     await Plotly.react(chartEl, fig.data, fig.layout, plotlyConfig());
     statusEl.textContent = "";
-    renderSummary(history);
+    renderHeading(history);
+    renderKpis(history);
   } catch (err) {
     if (err.name === "AbortError" && ctrl.signal.reason?.name !== "TimeoutError") {
       return; // superseded by a newer request
@@ -337,36 +341,120 @@ async function refreshChart() {
   }
 }
 
-function renderSummary(history) {
-  const tempCol =
-    "temperature_2m" in history.weather
-      ? "temperature_2m"
-      : "temperature_2m_mean";
-  const temps = (history.weather[tempCol] || []).filter((v) => v != null && Number.isFinite(v));
-  const aqis = (history.aqi.us_aqi || []).filter((v) => v != null && Number.isFinite(v));
+// ---- Card heading & KPI tiles -----------------------------------------
+const DATE_FMT = new Intl.DateTimeFormat("en-US", {
+  month: "short",
+  day: "numeric",
+  year: "numeric",
+});
 
-  const granularityLabel =
-    history.granularity.charAt(0).toUpperCase() + history.granularity.slice(1);
-  const items = [
-    ["Granularity", granularityLabel],
-    ["Observations", String(history.times.length)],
-  ];
-  if (temps.length) {
-    items.push(["Max temp", `${Math.max(...temps).toFixed(1)} °C`]);
-    items.push(["Min temp", `${Math.min(...temps).toFixed(1)} °C`]);
+/** "2026-03-09" -> "Mar 9, 2026" (parsed at noon so no timezone can shift the day). */
+function formatDate(ymd) {
+  return DATE_FMT.format(new Date(`${ymd}T12:00:00`));
+}
+
+function renderHeading(history) {
+  const { location, start, end, granularity } = history;
+  placeTitleEl.textContent = [location.name, location.country].filter(Boolean).join(", ");
+  const granularityLabel = granularity.charAt(0).toUpperCase() + granularity.slice(1);
+  const range = start === end ? formatDate(start) : `${formatDate(start)} – ${formatDate(end)}`;
+  rangeSubtitleEl.textContent = `${range} · ${granularityLabel} · ${location.timezone}`;
+}
+
+function finite(values) {
+  return (values || []).filter((v) => v != null && Number.isFinite(v));
+}
+function mean(values) {
+  return values.reduce((a, b) => a + b, 0) / values.length;
+}
+
+/** { avg, low, high } over an hourly column, or daily mean/min/max columns. */
+function stats(weather, hourlyCol, dailyPrefix) {
+  if (hourlyCol in weather) {
+    const v = finite(weather[hourlyCol]);
+    return v.length ? { avg: mean(v), low: Math.min(...v), high: Math.max(...v) } : null;
   }
+  const avg = finite(weather[`${dailyPrefix}_mean`]);
+  const lows = finite(weather[`${dailyPrefix}_min`]);
+  const highs = finite(weather[`${dailyPrefix}_max`]);
+  if (!avg.length) return null;
+  return {
+    avg: mean(avg),
+    low: Math.min(...(lows.length ? lows : avg)),
+    high: Math.max(...(highs.length ? highs : avg)),
+  };
+}
+
+function el(tag, className, text) {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text != null) node.textContent = text;
+  return node;
+}
+
+function kpiTile(key, label, value, sub) {
+  const tile = el("div", "kpi");
+  tile.dataset.kpi = key;
+  const valueEl = el("div", "kpi-value");
+  if (value instanceof Node) valueEl.append(value);
+  else valueEl.textContent = value;
+  tile.append(el("div", "kpi-label", label), valueEl, el("div", "kpi-sub", sub));
+  return tile;
+}
+
+function renderKpis(history) {
+  const tiles = [];
+  const temp = stats(history.weather, "temperature_2m", "temperature_2m");
+  tiles.push(
+    temp
+      ? kpiTile(
+          "temperature",
+          "Avg temperature",
+          `${temp.avg.toFixed(1)} °C`,
+          `Low ${temp.low.toFixed(1)} · High ${temp.high.toFixed(1)} °C`,
+        )
+      : kpiTile("temperature", "Avg temperature", "—", "No data"),
+  );
+
+  const humid = stats(history.weather, "relative_humidity_2m", "relative_humidity_2m");
+  tiles.push(
+    humid
+      ? kpiTile(
+          "humidity",
+          "Avg humidity",
+          `${humid.avg.toFixed(0)}%`,
+          `Low ${humid.low.toFixed(0)} · High ${humid.high.toFixed(0)}%`,
+        )
+      : kpiTile("humidity", "Avg humidity", "—", "No data"),
+  );
+
+  const aqis = finite(history.aqi.us_aqi);
   if (aqis.length) {
-    items.push(["Max AQI", `${Math.max(...aqis).toFixed(0)}`]);
-    items.push(["Min AQI", `${Math.min(...aqis).toFixed(0)}`]);
-    items.push(["AQI coverage", `${(history.aqiCoverage * 100).toFixed(0)}%`]);
+    const peak = Math.max(...aqis);
+    const band = aqiBand(peak);
+    const value = document.createDocumentFragment();
+    const badge = el("span", "aqi-badge");
+    const dot = el("span", "aqi-dot");
+    dot.style.background = band.color;
+    badge.append(dot, document.createTextNode(band.label));
+    value.append(document.createTextNode(peak.toFixed(0)), badge);
+    tiles.push(kpiTile("aqi", "Peak AQI (US)", value, band.advice));
+  } else {
+    tiles.push(kpiTile("aqi", "Peak AQI (US)", "—", "No air-quality data for this period"));
   }
-  summaryEl.innerHTML = items
-    .map(
-      ([label, value]) =>
-        `<div class="summary-item"><span class="summary-label">${escapeHtml(label)}</span><span class="summary-value">${escapeHtml(value)}</span></div>`,
-    )
-    .join("");
-  summaryEl.hidden = false;
+
+  const n = history.times.length;
+  tiles.push(
+    kpiTile(
+      "coverage",
+      "AQI coverage",
+      `${(history.aqiCoverage * 100).toFixed(0)}%`,
+      `${n} ${history.granularity} ${n === 1 ? "reading" : "readings"}`,
+    ),
+  );
+
+  kpisEl.replaceChildren(...tiles);
+  kpisEl.hidden = false;
 }
 
 // Initial render.

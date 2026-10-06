@@ -17,6 +17,9 @@ const DAILY_WEATHER = [
   "temperature_2m_max",
   "temperature_2m_min",
   "temperature_2m_mean",
+  "relative_humidity_2m_mean",
+  "relative_humidity_2m_max",
+  "relative_humidity_2m_min",
 ];
 const HOURLY_AQI = ["us_aqi", "pm2_5", "pm10"];
 

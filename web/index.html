@@ -4,7 +4,23 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Weather History</title>
+    <meta name="color-scheme" content="light dark" />
     <link rel="stylesheet" href="./styles.css" />
+    <script>
+      // Apply the saved/OS theme before first paint to avoid a light flash.
+      (function () {
+        var t = "system";
+        try {
+          var q = new URLSearchParams(location.search).get("theme");
+          var p = JSON.parse(localStorage.getItem("weahist.prefs.v1") || "{}");
+          t = q || p.theme || "system";
+        } catch (e) {}
+        if (t === "system") {
+          t = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+        }
+        document.documentElement.setAttribute("data-theme", t);
+      })();
+    </script>
     <script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
   </head>
   <body>
@@ -22,55 +38,67 @@
 
     <div class="sticky-top">
       <header class="app-header">
-        <h1 class="brand">🌤 Weather History</h1>
-        <select id="theme-select" class="theme-select" aria-label="Theme">
-          <option value="system">🖥 System</option>
-          <option value="light">☀ Light</option>
-          <option value="dark">🌙 Dark</option>
-        </select>
-      </header>
-
-      <section class="controls">
-        <div class="field">
-          <label for="location-input">Location</label>
-          <div class="autocomplete">
-            <input
-              id="location-input"
-              type="text"
-              placeholder="Hanoi, Vietnam"
-              autocomplete="off"
-              spellcheck="false"
-            />
-            <ul id="location-suggestions" class="suggestions" hidden></ul>
+        <div class="bar">
+          <h1 class="brand">🌤 Weather History</h1>
+          <div class="header-actions">
+            <select id="theme-select" class="theme-select" aria-label="Theme">
+              <option value="system">🖥 System</option>
+              <option value="light">☀ Light</option>
+              <option value="dark">🌙 Dark</option>
+            </select>
           </div>
         </div>
+      </header>
 
-        <div class="field">
-          <label for="range-select">Time range</label>
-          <select id="range-select">
-            <option value="1d">Last 24 hours</option>
-            <option value="3d">Last 3 days</option>
-            <option value="1w" selected>Last 7 days</option>
-            <option value="2w">Last 2 weeks</option>
-            <option value="1m">Last 30 days</option>
-            <option value="3m">Last 3 months</option>
-            <option value="6m">Last 6 months</option>
-            <option value="1y">Last 1 year</option>
-          </select>
+      <section class="controls" aria-label="Filters">
+        <div class="bar">
+          <div class="field">
+            <label for="location-input">Location</label>
+            <div class="autocomplete">
+              <input
+                id="location-input"
+                type="text"
+                placeholder="Hanoi, Vietnam"
+                autocomplete="off"
+                spellcheck="false"
+              />
+              <ul id="location-suggestions" class="suggestions" hidden></ul>
+            </div>
+          </div>
+
+          <div class="field">
+            <label for="range-select">Time range</label>
+            <select id="range-select">
+              <option value="1d">Last 24 hours</option>
+              <option value="3d">Last 3 days</option>
+              <option value="1w" selected>Last 7 days</option>
+              <option value="2w">Last 2 weeks</option>
+              <option value="1m">Last 30 days</option>
+              <option value="3m">Last 3 months</option>
+              <option value="6m">Last 6 months</option>
+              <option value="1y">Last 1 year</option>
+            </select>
+          </div>
         </div>
       </section>
     </div>
 
-    <main>
-      <div id="status" class="status"></div>
-      <div class="chart-wrap">
-        <div id="chart" class="chart"></div>
-        <div id="loading" class="loading-overlay" hidden aria-live="polite">
-          <div class="spinner" role="status" aria-label="Loading"></div>
-          <div class="loading-text">Fetching data…</div>
+    <main class="bar">
+      <div id="status" class="status" role="status"></div>
+      <section id="kpis" class="kpis" aria-label="Summary" hidden></section>
+      <article class="card">
+        <header class="card-head">
+          <h2 id="place-title" class="card-title"></h2>
+          <p id="range-subtitle" class="card-sub"></p>
+        </header>
+        <div class="chart-wrap">
+          <div id="chart" class="chart"></div>
+          <div id="loading" class="loading-overlay" hidden aria-live="polite">
+            <div class="spinner" role="status" aria-label="Loading"></div>
+            <div class="loading-text">Fetching data…</div>
+          </div>
         </div>
-      </div>
-      <div id="summary" class="summary" hidden></div>
+      </article>
     </main>
 
     <footer class="app-footer">
