@@ -77,9 +77,7 @@ uv run pytest -m e2e --headed        # watch the browser tests run
 The e2e suite checks app behaviour (search, ranges, themes, saved prefs,
 shareable URLs, error/timeout handling) and layout on phone, tablet and
 desktop viewports (no horizontal overflow, no overlapping controls, chart
-fits its card, compact chart layout below 640px). Known layout bugs are
-marked `xfail(strict=True)` and start failing once fixed, as a reminder to
-remove the marker.
+fits its card, chart labels don't collide, compact chart layout below 640px).
 
 ## Author
 

@@ -15,6 +15,7 @@ import pytest
 from playwright.sync_api import Page, expect
 
 from tests.e2e.conftest import App
+from tests.e2e.openmeteo_mock import OpenMeteoMock
 
 NARROW_BREAKPOINT = 640
 # WCAG 2.2 SC 2.5.8 (AA) minimum target size.
@@ -60,12 +61,6 @@ def _width(page: Page) -> int:
     return page.viewport_size["width"]  # type: ignore[index]
 
 
-def _known_bug(request: pytest.FixtureRequest, reason: str) -> None:
-    """Mark a currently-failing check as an expected failure. ``strict`` makes
-    the test fail once the bug is fixed, as a reminder to drop the marker."""
-    request.applymarker(pytest.mark.xfail(reason=reason, strict=True))
-
-
 # ---- Page-level layout ----------------------------------------------------
 
 
@@ -100,29 +95,17 @@ def test_element_fits_inside_viewport(screen: App, selector: str) -> None:
     )
 
 
-def test_header_and_controls_do_not_overlap(screen: App, request: pytest.FixtureRequest) -> None:
+def test_header_and_controls_do_not_overlap(screen: App) -> None:
     page = screen.page
-    if _width(page) <= 320:
-        _known_bug(
-            request,
-            "Location <input> keeps its intrinsic ~169px width and spills under the "
-            "range <select>; .controls also keeps 24px side padding on phones",
-        )
     assert not _overlap(_box(page, "h1.brand"), _box(page, "#theme-select"))
     assert not _overlap(_box(page, "#location-input"), _box(page, "#range-select"))
 
 
-def test_sticky_controls_sit_flush_under_header_when_scrolled(
-    screen: App, request: pytest.FixtureRequest
-) -> None:
-    _known_bug(
-        request,
-        "styles.css hard-codes .controls { top: 65px / 60px } but the header is "
-        "~59px / ~53px tall, leaving a 6–7px strip where scrolled content shows through",
-    )
+def test_sticky_controls_sit_flush_under_header_when_scrolled(screen: App) -> None:
     page = screen.page
-    page.mouse.wheel(0, 2000)
-    page.wait_for_function("() => window.scrollY > 0")
+    if page.evaluate("() => document.documentElement.scrollHeight > innerHeight"):
+        page.mouse.wheel(0, 2000)
+        page.wait_for_function("() => window.scrollY > 0")
     header, controls = _box(page, ".app-header"), _box(page, ".controls")
     assert header["y"] == pytest.approx(0, abs=1)
     gap = controls["y"] - (header["y"] + header["height"])
@@ -223,22 +206,30 @@ def test_chart_title_legend_and_labels_stay_inside_plot(screen: App) -> None:
             )
 
 
-def test_chart_max_min_labels_do_not_collide(screen: App, request: pytest.FixtureRequest) -> None:
-    if _width(screen.page) <= 1024:
-        _known_bug(
-            request,
-            "Temperature and humidity max/min labels are pinned near the same panel "
-            "edge and overlap when their peaks are only hours apart on narrow plots",
-        )
-    labels = screen.page.locator("#chart .annotation").all()
-    boxes = [(el.text_content(), el.bounding_box()) for el in labels]
+def _extrema_label_collisions(app: App) -> list[tuple[str, str]]:
+    labels = app.page.locator("#chart .annotation").all()
+    # Measure the label box (rect.bg) only — the .annotation group also spans its arrow.
+    boxes = [(el.text_content(), el.locator("rect.bg").bounding_box()) for el in labels]
     boxes = [
         (t, b) for t, b in boxes if b and b["width"] > 0 and t and t.startswith(("max", "min"))
     ]
-    collisions = [
+    return [
         (a, b) for i, (a, ba) in enumerate(boxes) for b, bb in boxes[i + 1 :] if _overlap(ba, bb)
     ]
-    assert collisions == []
+
+
+def test_chart_max_min_labels_do_not_collide(screen: App) -> None:
+    assert _extrema_label_collisions(screen) == []
+
+
+@pytest.mark.parametrize("width", [320, 1366])
+def test_labels_do_not_collide_when_peaks_coincide(
+    make_app: Callable[..., App], mock: OpenMeteoMock, width: int
+) -> None:
+    # Worst case: temperature and humidity peak at the very same hour.
+    mock.humidity_phase = 1.0
+    app = make_app(viewport={"width": width, "height": 800}).open()
+    assert _extrema_label_collisions(app) == []
 
 
 def test_chart_uses_compact_layout_below_breakpoint(screen: App) -> None:

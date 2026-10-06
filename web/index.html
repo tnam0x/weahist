@@ -20,44 +20,46 @@
       </button>
     </div>
 
-    <header class="app-header">
-      <h1 class="brand">🌤 Weather History</h1>
-      <select id="theme-select" class="theme-select" aria-label="Theme">
-        <option value="system">🖥 System</option>
-        <option value="light">☀ Light</option>
-        <option value="dark">🌙 Dark</option>
-      </select>
-    </header>
-
-    <section class="controls">
-      <div class="field">
-        <label for="location-input">Location</label>
-        <div class="autocomplete">
-          <input
-            id="location-input"
-            type="text"
-            placeholder="Hanoi, Vietnam"
-            autocomplete="off"
-            spellcheck="false"
-          />
-          <ul id="location-suggestions" class="suggestions" hidden></ul>
-        </div>
-      </div>
-
-      <div class="field">
-        <label for="range-select">Time range</label>
-        <select id="range-select">
-          <option value="1d">Last 24 hours</option>
-          <option value="3d">Last 3 days</option>
-          <option value="1w" selected>Last 7 days</option>
-          <option value="2w">Last 2 weeks</option>
-          <option value="1m">Last 30 days</option>
-          <option value="3m">Last 3 months</option>
-          <option value="6m">Last 6 months</option>
-          <option value="1y">Last 1 year</option>
+    <div class="sticky-top">
+      <header class="app-header">
+        <h1 class="brand">🌤 Weather History</h1>
+        <select id="theme-select" class="theme-select" aria-label="Theme">
+          <option value="system">🖥 System</option>
+          <option value="light">☀ Light</option>
+          <option value="dark">🌙 Dark</option>
         </select>
-      </div>
-    </section>
+      </header>
+
+      <section class="controls">
+        <div class="field">
+          <label for="location-input">Location</label>
+          <div class="autocomplete">
+            <input
+              id="location-input"
+              type="text"
+              placeholder="Hanoi, Vietnam"
+              autocomplete="off"
+              spellcheck="false"
+            />
+            <ul id="location-suggestions" class="suggestions" hidden></ul>
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="range-select">Time range</label>
+          <select id="range-select">
+            <option value="1d">Last 24 hours</option>
+            <option value="3d">Last 3 days</option>
+            <option value="1w" selected>Last 7 days</option>
+            <option value="2w">Last 2 weeks</option>
+            <option value="1m">Last 30 days</option>
+            <option value="3m">Last 3 months</option>
+            <option value="6m">Last 6 months</option>
+            <option value="1y">Last 1 year</option>
+          </select>
+        </div>
+      </section>
+    </div>
 
     <main>
       <div id="status" class="status"></div>

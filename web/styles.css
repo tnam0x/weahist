@@ -61,6 +61,13 @@ a:hover {
   text-decoration: underline;
 }
 
+/* Header + controls stick as one block so no gap can open between them. */
+.sticky-top {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
 .app-header {
   display: flex;
   align-items: center;
@@ -68,9 +75,6 @@ a:hover {
   padding: 14px 24px;
   border-bottom: 1px solid var(--border);
   background: var(--surface);
-  position: sticky;
-  top: 0;
-  z-index: 10;
 }
 
 .error-banner {
@@ -118,9 +122,6 @@ a:hover {
   padding: 10px 24px;
   background: var(--surface);
   border-bottom: 1px solid var(--border);
-  position: sticky;
-  top: 65px;
-  z-index: 9;
 }
 
 .theme-select {
@@ -167,6 +168,11 @@ a:hover {
   font-family: inherit;
   height: 30px;
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.field input {
+  width: 100%;
+  min-width: 0;
 }
 
 .field input:focus,
@@ -338,8 +344,7 @@ body.is-loading #reset-prefs {
 
 @media (max-width: 640px) {
   .controls {
-    grid-template-columns: 1fr auto;
-    top: 60px;
+    padding: 10px 8px;
   }
   .app-header {
     padding: 12px 8px;

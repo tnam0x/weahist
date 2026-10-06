@@ -182,12 +182,15 @@ export function buildFigure(history, theme) {
       line: { color: p.humidityLine, width: 1.5 },
       hovertemplate: "<b>%{y:.0f}%</b><extra>Humidity</extra>",
     });
+    // Each y-axis autoranges independently, so the temperature and humidity
+    // extrema always sit on the same panel edges. Temperature labels point
+    // outward; humidity labels point inward so the two never collide.
     annotateExtrema(layout, times, weather[humidCol], p, "%", {
       yref: "y2",
       color: p.humidityLine,
       digits: 0,
-      maxAy: -36,
-      minAy: 36,
+      maxAy: 32,
+      minAy: -32,
       compact: isNarrow,
     });
   }

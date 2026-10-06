@@ -80,6 +80,9 @@ class OpenMeteoMock:
     hold: bool = False
     held: list[Route] = field(default_factory=list)
     requests: list[tuple[str, dict[str, str]]] = field(default_factory=list)
+    # -1.0: humidity peaks when temperature bottoms out (realistic);
+    # +1.0: both peak at the same hour (worst case for label placement).
+    humidity_phase: float = -1.0
 
     def install(self, page: Page) -> None:
         page.route(OPEN_METEO_PATTERN, self._handle)
@@ -166,7 +169,7 @@ class OpenMeteoMock:
                 for h in range(24):
                     times.append(f"{d.isoformat()}T{h:02d}:00")
                     temp.append(round(place.base_temp + 5 * _wave(h), 2))
-                    humid.append(round(70 - 10 * _wave(h), 2))
+                    humid.append(round(70 + self.humidity_phase * 10 * _wave(h), 2))
             return {
                 "timezone": place.timezone,
                 "hourly": {
