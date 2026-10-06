@@ -60,6 +60,27 @@ uv run uvicorn weahist.api.app:app --reload
 # open http://127.0.0.1:8000
 ```
 
+### Tests
+
+Backend tests use pytest. The frontend in `web/` is covered by browser tests
+in [`tests/e2e/`](tests/e2e/) (pytest-playwright, Chromium), which serve
+`web/` statically and mock every Open-Meteo call, so they need no network
+after the first run (the pinned Plotly bundle is cached under `.cache/e2e/`).
+
+```bash
+uv run playwright install chromium   # once
+uv run pytest                        # everything
+uv run pytest -m "not e2e"           # backend only (fast)
+uv run pytest -m e2e --headed        # watch the browser tests run
+```
+
+The e2e suite checks app behaviour (search, ranges, themes, saved prefs,
+shareable URLs, error/timeout handling) and layout on phone, tablet and
+desktop viewports (no horizontal overflow, no overlapping controls, chart
+fits its card, compact chart layout below 640px). Known layout bugs are
+marked `xfail(strict=True)` and start failing once fixed, as a reminder to
+remove the marker.
+
 ## Author
 
 Made with ❤️ by **tnam0x** · [namtran4194@gmail.com](mailto:namtran4194@gmail.com)

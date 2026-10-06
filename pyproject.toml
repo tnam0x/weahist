@@ -32,6 +32,7 @@ dev = [
     "mypy>=1.20.2",
     "pandas-stubs>=3.0.0.260204",
     "pytest>=9.0.3",
+    "pytest-playwright>=0.9.0",
     "respx>=0.23.1",
     "ruff>=0.15.12",
 ]
@@ -55,3 +56,6 @@ ignore_missing_imports = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+markers = [
+    "e2e: browser tests of the static frontend in web/ (Playwright; ~3 min)",
+]
