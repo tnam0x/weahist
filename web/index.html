@@ -3,8 +3,52 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Weather History</title>
+    <title>Weather &amp; Air Quality History for Any City | Weather History</title>
+    <meta name="description" content="Free weather and air-quality history for any city: hourly or daily temperature, humidity and US AQI, from the last 24 hours up to a year. No sign-up." />
+    <link rel="canonical" href="https://tnam0x.github.io/weahist/" />
     <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#fcfcfb" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#1a1a19" />
+
+    <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
+    <link rel="manifest" href="./site.webmanifest" />
+
+    <!-- Link previews (Facebook, Zalo, Slack, X, …) -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Weather History" />
+    <meta property="og:title" content="Weather &amp; air-quality history for any city" />
+    <meta property="og:description" content="Free weather and air-quality history for any city: hourly or daily temperature, humidity and US AQI, from the last 24 hours up to a year. No sign-up." />
+    <meta property="og:url" content="https://tnam0x.github.io/weahist/" />
+    <meta property="og:image" content="https://tnam0x.github.io/weahist/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Weather History: temperature and humidity lines over air-quality bands" />
+    <meta property="og:locale" content="en_US" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Weather &amp; air-quality history for any city" />
+    <meta name="twitter:description" content="Free weather and air-quality history for any city: hourly or daily temperature, humidity and US AQI, from the last 24 hours up to a year. No sign-up." />
+    <meta name="twitter:image" content="https://tnam0x.github.io/weahist/og-image.png" />
+
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebApplication",
+        "name": "Weather History",
+        "url": "https://tnam0x.github.io/weahist/",
+        "description": "Free weather and air-quality history for any city: hourly or daily temperature, humidity and US AQI, from the last 24 hours up to a year. No sign-up.",
+        "applicationCategory": "UtilitiesApplication",
+        "operatingSystem": "Any",
+        "browserRequirements": "Requires JavaScript",
+        "inLanguage": "en",
+        "isAccessibleForFree": true,
+        "image": "https://tnam0x.github.io/weahist/og-image.png",
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+        "author": { "@type": "Person", "name": "tnam0x", "url": "https://github.com/tnam0x" }
+      }
+    </script>
+
+    <link rel="preconnect" href="https://cdn.plot.ly" />
     <link rel="stylesheet" href="./styles.css" />
     <script>
       // Apply the saved/OS theme before first paint to avoid a light flash.
@@ -21,7 +65,7 @@
         document.documentElement.setAttribute("data-theme", t);
       })();
     </script>
-    <script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
+    <script defer src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
   </head>
   <body>
     <div id="error-banner" class="error-banner" role="alert" hidden>
@@ -39,7 +83,7 @@
     <div class="sticky-top">
       <header class="app-header">
         <div class="bar">
-          <h1 class="brand">🌤 Weather History</h1>
+          <h1 class="brand"><span aria-hidden="true">🌤 </span>Weather History</h1>
           <div class="header-actions">
             <button type="button" id="share" class="btn-ghost header-btn" aria-label="Share this view">
               <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
@@ -131,6 +175,12 @@
     </div>
 
     <main class="bar">
+      <noscript>
+        <p class="status">
+          Weather History needs JavaScript to fetch and chart data from Open-Meteo.
+          Please enable it to continue.
+        </p>
+      </noscript>
       <div id="status" class="status" role="status"></div>
       <header class="page-head">
         <div>
@@ -213,6 +263,13 @@
     <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 
     <footer class="app-footer">
+      <p class="about">
+        Weather History shows what the weather and the air were really like in any city:
+        hourly or daily temperature, relative humidity and US Air Quality Index (AQI)
+        for the last 24 hours up to a full year, with the EPA's health guidance. Data
+        comes from the free, open-source Open-Meteo API (ECMWF reanalysis and CAMS air
+        quality). Free to use — no sign-up and no API key.
+      </p>
       <div>
         Source:
         <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a>

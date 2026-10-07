@@ -832,6 +832,12 @@ body.is-loading #reset-prefs {
   align-items: center;
 }
 
+.app-footer .about {
+  max-width: 720px;
+  margin: 0 0 var(--sp-2);
+  line-height: 1.6;
+}
+
 .app-footer .author .heart {
   color: #e25555;
   display: inline-block;

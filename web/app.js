@@ -667,7 +667,7 @@ shareBtn.addEventListener("click", async () => {
   const coarse = window.matchMedia("(pointer: coarse)").matches;
   if (coarse && navigator.share) {
     try {
-      await navigator.share({ title: document.title, url });
+      await navigator.share({ title: "Weather History", url });
     } catch (err) {
       if (err.name !== "AbortError") showToast("Couldn't open the share sheet.");
     }
