@@ -58,8 +58,8 @@ sitemap, share previews) — change both when hosting it elsewhere.
 The app itself needs no build. Serve `web/` with any static file server:
 
 ```bash
-python -m http.server -d web 8000     # open http://127.0.0.1:8000
-scripts/serve-lan.sh                  # same, reachable from your phone on the LAN
+python -m http.server -d web 8000                   # open http://127.0.0.1:8000
+python -m http.server -d web 8000 --bind 0.0.0.0    # same, reachable from your phone on the LAN
 ```
 
 This serves only the home page: picking a city still works, but city addresses such as `/hanoi/`
