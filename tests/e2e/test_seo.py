@@ -204,3 +204,10 @@ def test_unknown_path_becomes_a_search(make_app: Callable[..., App]) -> None:
     app.wait_for_chart()
     assert app.page.url.endswith("/?location=longyearbyen")
     expect(app.page.locator("#place-title")).to_contain_text("Longyearbyen")
+
+
+def test_every_page_loads_goatcounter(site_dir: Path) -> None:
+    tag = 'data-goatcounter="https://tnam0x.goatcounter.com/count"'
+    pages = [site_dir / "index.html"] + [site_dir / c["slug"] / "index.html" for c in CITIES]
+    for page in pages:
+        assert tag in page.read_text(encoding="utf-8"), page

@@ -1071,6 +1071,7 @@ async function refreshChart() {
     csvBtn.hidden = false;
     await renderAll(history);
     updatePageMeta();
+    if (nav === "push") countPageview();
   } catch (err) {
     if (err.name === "AbortError" && ctrl.signal.reason?.name !== "TimeoutError") {
       return; // superseded by a newer request
@@ -1192,6 +1193,13 @@ function renderKpis(rawHistory) {
 
   kpisEl.replaceChildren(...tiles);
   kpisEl.hidden = false;
+}
+
+// ---- Analytics ------------------------------------------------------------
+/** GoatCounter only counts full page loads; count in-app place changes too. */
+function countPageview() {
+  const url = new URL(window.location.href);
+  window.goatcounter?.count?.({ path: url.pathname + url.search, title: document.title });
 }
 
 // ---- Offline support ----------------------------------------------------

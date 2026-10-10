@@ -83,3 +83,20 @@ def test_brand_links_home_from_a_city_page(app: App) -> None:
     app.wait_for_chart()
     assert app.page.url.endswith("/")
     expect(app.page.locator("#page-intro")).to_contain_text("any city")
+
+
+def test_in_app_place_changes_are_counted(app: App) -> None:
+    app.page.add_init_script(
+        "window.goatcounter = { count: (v) => (window.__counted ||= []).push(v) };"
+    )
+    app.open()
+    assert app.page.evaluate("() => window.__counted") is None, "first load counts itself"
+    _pick(app, "Tok", "Tokyo")
+    expect(app.page.locator("#place-title")).to_have_text("Tokyo, Japan")
+    counted = app.page.evaluate("() => window.__counted")
+    assert [c["path"] for c in counted] == ["/tokyo/"]
+    assert counted[0]["title"].startswith("Tokyo, Japan weather history")
+
+    app.page.locator('[data-range="3d"]').click()
+    expect(app.page.locator("#kpis")).to_contain_text("72 hourly readings")
+    assert len(app.page.evaluate("() => window.__counted")) == 1, "range tweaks aren't pageviews"
