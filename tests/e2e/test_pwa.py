@@ -91,3 +91,23 @@ def test_build_versions_the_worker_and_its_shell_exists(site_dir: Path) -> None:
     assert shell
     for name in re.findall(r'"([^"]+)"', shell.group(1)):
         assert (site_dir / name).exists(), f"shell file missing from the build: {name}"
+
+
+def test_a_new_deploy_is_not_mixed_with_cached_files(sw_context: BrowserContext) -> None:
+    page = sw_context.new_page()
+    page.clock.install(time=FIXED_NOW)
+    page.goto("/")
+    page.evaluate("() => navigator.serviceWorker.ready.then(() => true)")
+    page.reload()
+    expect(page.locator("#kpis")).to_be_visible()
+    assert page.evaluate("() => Boolean(navigator.serviceWorker.controller)")
+
+    # "Deploy" a stylesheet change: the very next load must use it, not the
+    # cached copy from the previous visit.
+    def new_styles(route: Route) -> None:
+        body = route.fetch().text() + "\n.brand-logo { outline: 3px solid red; }"
+        route.fulfill(status=200, body=body, content_type="text/css")
+
+    sw_context.route("**/styles.css", new_styles)
+    page.reload()
+    expect(page.locator(".brand-logo")).to_have_css("outline-style", "solid")

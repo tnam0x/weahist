@@ -1,7 +1,8 @@
 // Service worker: makes the app installable and usable offline.
 //
-// - Pages (HTML):      network first, cached copy when offline.
-// - App files:         served from cache, refreshed in the background.
+// - Pages and app files: network first, cached copy when offline. (Serving
+//   app files from cache first would pair a fresh page with last deploy's
+//   CSS/JS for one visit after every update.)
 // - Plotly (CDN):      cache first (the URL is versioned).
 // - Open-Meteo data:   network first, last good response when offline.
 //
@@ -69,7 +70,7 @@ self.addEventListener("fetch", (event) => {
   } else if (url.href === PLOTLY_URL) {
     event.respondWith(cacheFirst(request, SHELL_CACHE));
   } else if (url.origin === self.location.origin) {
-    event.respondWith(staleWhileRevalidate(request, SHELL_CACHE, event));
+    event.respondWith(networkFirst(request, SHELL_CACHE));
   }
 });
 
@@ -98,22 +99,6 @@ async function cacheFirst(request, cacheName) {
   const response = await fetch(request);
   if (response.ok || response.type === "opaque") await cache.put(request, response.clone());
   return response;
-}
-
-async function staleWhileRevalidate(request, cacheName, event) {
-  const cache = await caches.open(cacheName);
-  const cached = await cache.match(request, { ignoreSearch: true });
-  const refresh = fetch(request)
-    .then(async (response) => {
-      if (response.ok) await cache.put(request, response.clone());
-      return response;
-    })
-    .catch(() => undefined);
-  if (cached) {
-    event.waitUntil(refresh);
-    return cached;
-  }
-  return (await refresh) ?? Response.error();
 }
 
 /** Keep the newest `max` entries (Cache keys come back in insertion order). */
