@@ -243,6 +243,10 @@ readUrlState({ initial: true });
 const langToggle = document.getElementById("lang-toggle");
 function applyLanguage() {
   applyStaticStrings();
+  // Footer city links carry both names from the site build.
+  for (const a of document.querySelectorAll(".city-index a[data-vi]")) {
+    a.textContent = a.dataset[getLang()];
+  }
   const other = getLang() === "vi" ? "en" : "vi";
   langToggle.textContent = other.toUpperCase();
   langToggle.lang = other;

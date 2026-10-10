@@ -4,6 +4,7 @@ static texts the site build repeats."""
 from __future__ import annotations
 
 import html
+import json
 import re
 from collections.abc import Callable
 
@@ -55,6 +56,19 @@ def test_switching_language_relabels_everything_in_place(make_app: Callable[...,
     app.wait_for_chart()
     expect(page.locator("html")).to_have_attribute("lang", "en")
     assert page.evaluate(f"() => localStorage.getItem('{LANG_KEY}')") == "en"
+
+
+@pytest.mark.parametrize("lang", ["vi", "en"])
+def test_city_index_follows_the_language(make_app: Callable[..., App], lang: str) -> None:
+    cities = json.loads((WEB_DIR / "cities.json").read_text(encoding="utf-8"))
+    app = make_app(lang=lang).open()
+    links = app.page.locator(".city-index a")
+    expect(links).to_have_text([c[lang] for c in cities])
+
+    # Switching language relabels the list in place.
+    other = "en" if lang == "vi" else "vi"
+    app.page.locator("#lang-toggle").click()
+    expect(links).to_have_text([c[other] for c in cities])
 
 
 def test_vietnamese_charts_use_local_number_and_date_formats(make_app: Callable[..., App]) -> None:

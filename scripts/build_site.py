@@ -127,7 +127,8 @@ def city_ld(city: dict[str, Any], title: str, description: str, url: str) -> dic
 def city_index(cities: list[dict[str, Any]], prefix: str) -> str:
     def links(group: str) -> str:
         items = [
-            f'<li><a href="{prefix}{c["slug"]}/">{html.escape(c["vi"])}</a></li>'
+            f'<li><a href="{prefix}{c["slug"]}/" data-vi="{html.escape(c["vi"])}"'
+            f' data-en="{html.escape(c["en"])}">{html.escape(c["vi"])}</a></li>'
             for c in cities
             if c["group"] == group
         ]
