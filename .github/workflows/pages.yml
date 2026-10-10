@@ -1,28 +1,74 @@
-name: Deploy to GitHub Pages
+name: Test & deploy
 
 on:
   push:
     branches: [main]
-    paths:
-      - "web/**"
-      - ".github/workflows/pages.yml"
+  pull_request:
   workflow_dispatch:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
-  group: "pages"
-  cancel-in-progress: false
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --locked
+
+      - name: Cache Playwright browsers and the pinned Plotly bundle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/ms-playwright
+            .cache/e2e
+          key: playwright-${{ runner.os }}-${{ hashFiles('uv.lock', 'web/index.html') }}
+
+      - name: Install Chromium
+        run: uv run playwright install --with-deps chromium
+
+      - name: Lint
+        run: |
+          uv run ruff check tests
+          uv run ruff format --check tests
+
+      - name: Test
+        run: uv run pytest --screenshot only-on-failure --tracing retain-on-failure
+
+      - name: Upload test artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-test-results
+          path: test-results/
+          if-no-files-found: ignore
+
   deploy:
+    needs: test
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    concurrency:
+      group: pages
+      cancel-in-progress: false
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
-    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4

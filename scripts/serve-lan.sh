@@ -30,6 +30,6 @@ fi
 echo "  stop:    Ctrl+C"
 echo
 
-# No --reload on purpose: filesystem watching is dev-only and not
-# appropriate when exposing the server on the LAN.
-exec uv run uvicorn weahist.api.app:app --host "${HOST}" --port "${PORT}"
+# The app is fully static: serve web/ as GitHub Pages would.
+cd "$(dirname "$0")/../web"
+exec python3 -m http.server "${PORT}" --bind "${HOST}"

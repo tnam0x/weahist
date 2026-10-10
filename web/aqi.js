@@ -1,4 +1,4 @@
-// US AQI bands (US EPA) — mirrors src/weahist/visualization/_helpers.py.
+// US AQI bands (US EPA).
 // `advice` is the EPA's short guidance for each category.
 
 export const AQI_BANDS = [

@@ -47,31 +47,32 @@ The frontend lives in [`web/`](web/) and is **pure static** — HTML, CSS, and a
 
 ### Local development
 
-If you'd rather run it locally (with the optional Python backend for development), the same `web/` is also served by the FastAPI app:
+There is no build step for the app itself. Serve `web/` with any static file server:
 
 ```bash
-uv run uvicorn weahist.api.app:app --reload
-# open http://127.0.0.1:8000
+python -m http.server -d web 8000     # open http://127.0.0.1:8000
+scripts/serve-lan.sh                  # same, reachable from your phone on the LAN
 ```
 
 ### Tests
 
-Backend tests use pytest. The frontend in `web/` is covered by browser tests
-in [`tests/e2e/`](tests/e2e/) (pytest-playwright, Chromium), which serve
-`web/` statically and mock every Open-Meteo call, so they need no network
+The app is covered by browser tests in [`tests/e2e/`](tests/e2e/) (pytest-playwright, Chromium).
+They serve `web/` statically and mock every Open-Meteo call, so they need no network
 after the first run (the pinned Plotly bundle is cached under `.cache/e2e/`).
 
 ```bash
-uv run playwright install chromium   # once
-uv run pytest                        # everything
-uv run pytest -m "not e2e"           # backend only (fast)
-uv run pytest -m e2e --headed        # watch the browser tests run
+uv sync                               # test tooling only — the app has no Python code
+uv run playwright install chromium    # once
+uv run pytest                         # everything
+uv run pytest --headed -k filters     # watch some of them run
 ```
 
-The e2e suite checks app behaviour (search, ranges, themes, saved prefs,
-shareable URLs, error/timeout handling) and layout on phone, tablet and
-desktop viewports (no horizontal overflow, no overlapping controls, chart
-fits its card, chart labels don't collide, compact chart layout below 640px).
+The suite checks behaviour (search, ranges, units, themes, saved prefs, shareable URLs,
+caching, error/timeout handling), layout on phone, tablet and desktop viewports, design
+tokens and contrast, and SEO metadata.
+
+GitHub Actions runs lint and the full suite on every push and pull request; `main` is
+deployed to GitHub Pages only when the tests pass.
 
 ## Author
 

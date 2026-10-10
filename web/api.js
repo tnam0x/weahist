@@ -1,5 +1,4 @@
 // Open-Meteo client — runs entirely in the browser. No API key needed.
-// Mirrors src/weahist/clients/* + services/history.py.
 
 const GEOCODING_URL = "https://geocoding-api.open-meteo.com/v1/search";
 const ARCHIVE_URL = "https://archive-api.open-meteo.com/v1/archive";
@@ -128,12 +127,27 @@ function dateAddDays(s, n) {
 }
 
 // ---- HTTP ------------------------------------------------------------
+// Successful responses are kept in memory for a while, so flipping back to
+// a place or range seen earlier in the session doesn't refetch it. The
+// archive never changes; forecast/AQI tails refresh at most hourly upstream.
+const CACHE_TTL_MS = 15 * 60_000;
+const CACHE_MAX_ENTRIES = 60;
+const responseCache = new Map(); // full URL -> { at, data }
+
 async function getJson(url, params, signal) {
   const qs = new URLSearchParams();
   for (const [k, v] of Object.entries(params)) {
     if (v != null) qs.set(k, String(v));
   }
-  const res = await fetch(`${url}?${qs.toString()}`, { signal });
+  const full = `${url}?${qs.toString()}`;
+  const hit = responseCache.get(full);
+  if (hit && Date.now() - hit.at < CACHE_TTL_MS) {
+    // Refresh recency so the oldest entry is evicted first.
+    responseCache.delete(full);
+    responseCache.set(full, hit);
+    return structuredClone(hit.data);
+  }
+  const res = await fetch(full, { signal });
   if (!res.ok) {
     let detail = res.statusText;
     try {
@@ -142,7 +156,12 @@ async function getJson(url, params, signal) {
     } catch { /* ignore */ }
     throw new Error(`Open-Meteo ${url}: ${res.status} ${detail}`);
   }
-  return res.json();
+  const data = await res.json();
+  responseCache.set(full, { at: Date.now(), data });
+  if (responseCache.size > CACHE_MAX_ENTRIES) {
+    responseCache.delete(responseCache.keys().next().value);
+  }
+  return structuredClone(data);
 }
 
 // ---- Geocoding -------------------------------------------------------

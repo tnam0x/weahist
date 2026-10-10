@@ -1,53 +1,42 @@
 # Weather History (`weahist`) — Project Rules
 
-Python app that fetches historical weather + air-quality data, caches it locally, and visualizes it. Core must stay framework-agnostic so a CLI today and a web app tomorrow can share it.
+A pure-static web app that charts historical weather and air-quality data for any city.
+The browser calls Open-Meteo directly; there is no backend.
 
 ## Stack
-- Python 3.11+, `uv` for dependency management (no pip/Poetry/`requirements.txt`).
-- src layout: code under `src/weahist/`, tests under `tests/`.
-- `httpx`, `pandas` + `pyarrow`, `pydantic` v2, `pydantic-settings`.
-- CLI: `typer`. Web: `fastapi` + `uvicorn`. Viz: `matplotlib` and `plotly`.
-- Tooling: `pytest` + `respx`, `ruff`, `mypy` (strict on `src/`).
+- `web/`: plain HTML, CSS and ES modules — no framework, no bundler, no build step for the app.
+- Charts: Plotly **basic** bundle from the CDN (`plotly-basic-<version>.min.js`, loaded with `defer`).
+  Only use trace types included in that bundle (scatter, bar, pie).
+- Hosting: GitHub Pages, deployed by `.github/workflows/pages.yml` after the tests pass.
+- Tooling: Python 3.11+ with `uv`, only for the test suite (pytest + pytest-playwright, ruff).
+
+## Layout
+```
+web/
+  index.html   # shell, SEO/OG metadata, JSON-LD
+  styles.css   # design tokens (light/dark chosen separately) + layout
+  app.js       # state, prefs, controls, rendering
+  api.js       # Open-Meteo client, range resolution, response cache
+  chart.js     # one Plotly figure per card (single y-axis each)
+  aqi.js       # US EPA AQI bands and advice
+  theme.js     # chart palettes mirroring the CSS tokens
+tests/e2e/     # Playwright tests with a deterministic Open-Meteo mock
+```
 
 ## Data source
-Open-Meteo only (no API keys): geocoding, archive weather, air quality.
-AQI history may be shorter than the requested range — degrade gracefully (return what's available, log a warning, never fail the request).
-Store timestamps in UTC internally; convert to the location's timezone only at display boundaries.
+Open-Meteo only (no API keys): geocoding, archive + forecast weather, air quality.
+AQI history may be shorter than the requested range — degrade gracefully, never fail the page.
+Times are shown in the location's timezone.
 
-## Architecture
-Layered, with framework code at the edges only:
-
-```
-src/weahist/
-  config.py · models.py · errors.py
-  clients/    # one module per upstream API
-  storage/    # CacheBackend Protocol + parquet cache
-  services/   # orchestration, framework-agnostic
-  visualization/  # Renderer Protocol + concrete renderers
-  cli.py      # Typer adapter (thin)
-  api/        # FastAPI adapter (thin)
-```
-
-Hard rules:
-- No `typer` / `fastapi` / `click` / `argparse` imports outside `cli.py` and `api/`.
-- CLI and FastAPI must both call the same `services/` functions — never duplicate orchestration.
-- Cross-layer seams use `typing.Protocol` (e.g. `CacheBackend`, `Renderer`).
-- Configuration only via `pydantic-settings`; no scattered `os.getenv`.
-
-## Coding conventions
-- Type-annotate every public function; keep `mypy --strict` clean on `src/`.
-- Pydantic v2 syntax; prefer `pathlib.Path` over `os.path`.
-- Use module-level `logging` — no `print` in library code.
-- Raise specific exceptions from a `weahist.errors` hierarchy; don't swallow errors.
-- Public APIs return `pandas.DataFrame` or Pydantic models, not raw dicts.
-- No premature abstraction — add a Protocol only when a second implementation is in sight.
+## Conventions
+- Build DOM with `textContent`/`createElement`; never put API or user data into `innerHTML`
+  without escaping.
+- Text uses ink tokens, never series colors; keep text contrast >= 4.5:1 in both themes.
+- One y-axis per chart; label extrema selectively; every chart has a table view.
+- Keep `theme.js` in sync with the CSS tokens (a test enforces it).
 
 ## Testing
-- All upstream HTTP mocked with `respx`; tests must not hit the network.
-- Mirror `src/weahist/` structure under `tests/`.
-- CLI tested via `typer.testing.CliRunner` against a fake service.
-
-## Don'ts
-- No API-key providers, frontend code, or database layer beyond the Parquet cache unless requested.
-- Don't commit `.env` or cache files — keep `.gitignore` current.
-- Don't add docstrings/comments to code you didn't change.
+- Every upstream call is mocked (`tests/e2e/openmeteo_mock.py`); tests must not hit the network.
+- The browser clock is pinned (`FIXED_NOW`) so dates and counts are deterministic.
+- New UI behaviour needs an e2e test; layout changes should keep `test_responsive.py` green
+  on all viewports.

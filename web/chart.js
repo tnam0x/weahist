@@ -1,8 +1,6 @@
 // Builds one Plotly figure per chart card (temperature, humidity, AQI) from a
 // merged history payload. Each figure has a single y-axis; titles and units
 // live in the card's HTML header, so figures carry no title or legend.
-// (Started as a port of src/weahist/visualization/plotly_renderer.py; the web
-// version has since diverged.)
 
 import { AQI_BANDS, aqiCategory, aqiMax } from "./aqi.js";
 import { FONT_FAMILY, paletteFor } from "./theme.js";

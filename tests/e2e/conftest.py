@@ -31,7 +31,7 @@ from tests.e2e.openmeteo_mock import OpenMeteoMock
 REPO_ROOT = Path(__file__).resolve().parents[2]
 WEB_DIR = REPO_ROOT / "web"
 
-PLOTLY_URL = "https://cdn.plot.ly/plotly-2.35.2.min.js"
+PLOTLY_URL = "https://cdn.plot.ly/plotly-basic-2.35.2.min.js"
 PLOTLY_CACHE = REPO_ROOT / ".cache" / "e2e" / PLOTLY_URL.rsplit("/", 1)[-1]
 
 # 2026-03-15 12:00 in Asia/Ho_Chi_Minh (a Sunday). "Last 7 days" therefore
