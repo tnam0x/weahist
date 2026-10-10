@@ -89,7 +89,8 @@ def test_structured_data_describes_a_free_web_app(head: Page) -> None:
 
 def test_single_h1_names_the_app(head: Page) -> None:
     expect(head.locator("h1")).to_have_count(1)
-    assert head.locator("h1").inner_text().strip().endswith("Lịch sử Thời tiết")
+    # The brand stays "Weather History" in both languages.
+    assert head.locator("h1").inner_text().strip() == "Weather History"
 
 
 @pytest.mark.parametrize(
@@ -139,7 +140,7 @@ def test_page_has_crawlable_text_without_javascript(make_app: Callable[..., App]
     # No app bundle and no API: only the static HTML is left, as for a simple crawler.
     app.page.route("**/app.js", lambda route: route.abort())
     app.page.goto("/")
-    expect(app.page.locator("h1")).to_contain_text("Lịch sử Thời tiết")
+    expect(app.page.locator("h1")).to_have_text("Weather History")
     text = app.page.locator("body").inner_text().lower()
     for keyword in ("nhiệt độ", "độ ẩm", "chất lượng không khí", "open-meteo"):
         assert keyword in text, keyword

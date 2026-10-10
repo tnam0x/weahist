@@ -194,8 +194,40 @@ a:hover {
 
 .brand-link,
 .brand-link:hover {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
   color: inherit;
   text-decoration: none;
+}
+
+.brand-logo {
+  flex: none;
+  width: 28px;
+  height: 28px;
+}
+
+.brand-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Phones: the header actions need the room, so the logo stands alone (the
+   name stays in the DOM for screen readers and crawlers). */
+@media (max-width: 480px) {
+  .brand-text {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+  .brand-logo {
+    width: 32px;
+    height: 32px;
+  }
 }
 
 .lang-btn {

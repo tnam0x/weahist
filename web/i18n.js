@@ -10,7 +10,6 @@ const DEFAULT_LANG = "vi";
 
 const STRINGS = {
   vi: {
-    "app.name": "Lịch sử Thời tiết",
     "meta.title": "Lịch sử thời tiết & chất lượng không khí | Weather History",
     "meta.titleCity": "Thời tiết {place}: lịch sử nhiệt độ, độ ẩm, AQI",
     "meta.description":
@@ -125,7 +124,7 @@ const STRINGS = {
     "footer.vietnam": "Việt Nam",
     "footer.world": "Thế giới",
     "footer.about":
-      "Lịch sử Thời tiết cho biết thời tiết và không khí thực tế ở mọi thành phố: nhiệt độ, độ ẩm tương đối và chỉ số chất lượng không khí (AQI) theo giờ hoặc theo ngày, từ 24 giờ qua đến cả năm, kèm khuyến nghị sức khỏe của EPA. Dữ liệu lấy từ API mã nguồn mở Open-Meteo (tái phân tích ECMWF và chất lượng không khí CAMS). Miễn phí — không cần đăng ký, không cần API key.",
+      "Weather History cho biết thời tiết và không khí thực tế ở mọi thành phố: nhiệt độ, độ ẩm tương đối và chỉ số chất lượng không khí (AQI) theo giờ hoặc theo ngày, từ 24 giờ qua đến cả năm, kèm khuyến nghị sức khỏe của EPA. Dữ liệu lấy từ API mã nguồn mở Open-Meteo (tái phân tích ECMWF và chất lượng không khí CAMS). Miễn phí — không cần đăng ký, không cần API key.",
     "aqi.good": "Tốt",
     "aqi.moderate": "Trung bình",
     "aqi.usg": "Kém (nhóm nhạy cảm)",
@@ -141,7 +140,6 @@ const STRINGS = {
     "aqi.hazardous.advice": "Mọi người nên tránh mọi hoạt động ngoài trời.",
   },
   en: {
-    "app.name": "Weather History",
     "meta.title": "Weather & Air Quality History for Any City | Weather History",
     "meta.titleCity": "{place} weather history: temperature, humidity, AQI",
     "meta.description":

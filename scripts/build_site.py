@@ -224,7 +224,7 @@ def not_found_page(base_path: str) -> str:
   </head>
   <body style="font-family: system-ui, sans-serif; text-align: center; padding: 48px 16px">
     <h1>Không tìm thấy trang · Page not found</h1>
-    <p><a href="{html.escape(base_path)}">Lịch sử Thời tiết · Weather History</a></p>
+    <p><a href="{html.escape(base_path)}">Weather History</a></p>
   </body>
 </html>
 """
