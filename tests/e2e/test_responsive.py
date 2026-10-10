@@ -79,6 +79,7 @@ def test_no_horizontal_scroll(screen: App) -> None:
         "h1.brand",
         "#theme-select",
         "#share",
+        "#lang-toggle",
         "#download-csv",
         '[data-chart="humidity"] .card-actions',
         ".controls",
@@ -101,7 +102,7 @@ def test_element_fits_inside_viewport(screen: App, selector: str) -> None:
 
 def test_header_and_controls_do_not_overlap(screen: App) -> None:
     page = screen.page
-    assert not _overlap(_box(page, "h1.brand"), _box(page, "#theme-select"))
+    assert not _overlap(_box(page, "h1.brand"), _box(page, ".header-actions"))
     assert not _overlap(_box(page, ".field-location"), _box(page, ".field-range"))
     assert not _overlap(_box(page, ".field-range"), _box(page, ".field-units"))
 

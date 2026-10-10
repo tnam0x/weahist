@@ -34,16 +34,8 @@ const RANGE_DAYS = {
   "1y": 365,
 };
 
-export const RANGE_LABELS = {
-  "1d": "Last 24 hours",
-  "3d": "Last 3 days",
-  "1w": "Last 7 days",
-  "2w": "Last 2 weeks",
-  "1m": "Last 30 days",
-  "3m": "Last 3 months",
-  "6m": "Last 6 months",
-  "1y": "Last 1 year",
-};
+/** Preset range keys, shortest first (labels live in i18n.js). */
+export const RANGE_KEYS = Object.keys(RANGE_DAYS);
 
 export const MAX_CUSTOM_DAYS = 366;
 const EARLIEST_DATE = "1940-01-01"; // start of the ERA5 archive
@@ -75,17 +67,17 @@ export function resolveRange(range) {
   };
 }
 
-/** Error message for an invalid custom range, or null when it's usable. */
+/**
+ * Why a custom range is unusable — "missing" | "order" | "future" |
+ * "tooEarly" | "tooLong" — or null when it's fine.
+ */
 export function validateCustomRange(start, end) {
   const isDate = (s) => /^\d{4}-\d{2}-\d{2}$/.test(s || "");
-  if (!isDate(start) || !isDate(end)) return "Pick both a start and an end date.";
-  if (start > end) return "The start date must be on or before the end date.";
-  const today = ymd(new Date());
-  if (end > today) return "The end date can't be in the future.";
-  if (start < EARLIEST_DATE) return "Data is only available from 1940 onwards.";
-  if (daysBetween(start, end) + 1 > MAX_CUSTOM_DAYS) {
-    return `Pick at most ${MAX_CUSTOM_DAYS} days.`;
-  }
+  if (!isDate(start) || !isDate(end)) return "missing";
+  if (start > end) return "order";
+  if (end > ymd(new Date())) return "future";
+  if (start < EARLIEST_DATE) return "tooEarly";
+  if (daysBetween(start, end) + 1 > MAX_CUSTOM_DAYS) return "tooLong";
   return null;
 }
 
@@ -165,11 +157,11 @@ async function getJson(url, params, signal) {
 }
 
 // ---- Geocoding -------------------------------------------------------
-export async function geocode(name, { count = 6, signal } = {}) {
+export async function geocode(name, { count = 6, signal, language = "en" } = {}) {
   if (!name || !name.trim()) return [];
   const data = await getJson(
     GEOCODING_URL,
-    { name: name.trim(), count, format: "json", language: "en" },
+    { name: name.trim(), count, format: "json", language },
     signal,
   );
   const results = data.results || [];

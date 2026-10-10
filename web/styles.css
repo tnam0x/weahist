@@ -192,6 +192,19 @@ a:hover {
   }
 }
 
+.brand-link,
+.brand-link:hover {
+  color: inherit;
+  text-decoration: none;
+}
+
+.lang-btn {
+  min-width: var(--control-h);
+  justify-content: center;
+  padding: 0 8px;
+  font-weight: 600;
+}
+
 .header-actions {
   flex: none;
   display: flex;
@@ -578,6 +591,13 @@ main.bar {
   color: var(--text-2);
 }
 
+.page-intro {
+  margin: 0 0 var(--sp-3);
+  max-width: 900px;
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+}
+
 /* Chart cards: stacked full-width so time axes line up (small multiples). */
 .charts {
   display: flex;
@@ -830,6 +850,33 @@ body.is-loading #reset-prefs {
   flex-direction: column;
   gap: var(--sp-1);
   align-items: center;
+}
+
+.city-index {
+  width: 100%;
+  max-width: 900px;
+  margin: 0 0 var(--sp-2);
+  text-align: left;
+}
+.city-index summary {
+  cursor: pointer;
+  text-align: center;
+  font-weight: 600;
+  color: var(--text-2);
+}
+.city-index h2 {
+  margin: var(--sp-3) 0 var(--sp-1);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--text-2);
+}
+.city-index ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px var(--sp-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
 
 .app-footer .about {

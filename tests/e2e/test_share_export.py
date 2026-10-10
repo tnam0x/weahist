@@ -15,9 +15,10 @@ from tests.e2e.conftest import App
 CLIPBOARD = ["clipboard-read", "clipboard-write"]
 
 
-def _clipboard_query(app: App) -> dict[str, list[str]]:
-    url = app.page.evaluate("() => navigator.clipboard.readText()")
-    return parse_qs(urlparse(url).query)
+def _clipboard(app: App) -> tuple[str, dict[str, list[str]]]:
+    """(path, query) of the copied link."""
+    url = urlparse(app.page.evaluate("() => navigator.clipboard.readText()"))
+    return url.path, parse_qs(url.query)
 
 
 def test_share_copies_a_link_to_the_current_view(make_app: Callable[..., App]) -> None:
@@ -25,8 +26,8 @@ def test_share_copies_a_link_to_the_current_view(make_app: Callable[..., App]) -
     page = app.page
     page.locator("#share").click()
     expect(page.locator("#toast")).to_have_text("Link copied")
-    # Defaults (system theme, °C) stay out of the link.
-    assert _clipboard_query(app) == {"location": ["Hanoi, Vietnam"], "range": ["1w"]}
+    # Hanoi has its own page; defaults (7 days, system theme, °C) stay out of the link.
+    assert _clipboard(app) == ("/hanoi/", {})
 
     page.locator('[data-units="f"]').click()
     page.select_option("#theme-select", "dark")
@@ -36,13 +37,16 @@ def test_share_copies_a_link_to_the_current_view(make_app: Callable[..., App]) -
     page.get_by_role("button", name="Apply").click()
     app.wait_for_chart()
     page.locator("#share").click()
-    assert _clipboard_query(app) == {
-        "location": ["Hanoi, Vietnam"],
-        "start": ["2026-03-01"],
-        "end": ["2026-03-05"],
-        "units": ["f"],
-        "theme": ["dark"],
-    }
+    assert _clipboard(app) == (
+        "/hanoi/",
+        {"start": ["2026-03-01"], "end": ["2026-03-05"], "units": ["f"], "theme": ["dark"]},
+    )
+
+
+def test_share_link_for_a_place_without_a_page(make_app: Callable[..., App]) -> None:
+    app = make_app(permissions=CLIPBOARD).open("?location=Longyearbyen&range=3d")
+    app.page.locator("#share").click()
+    assert _clipboard(app) == ("/", {"location": ["Longyearbyen"], "range": ["3d"]})
 
 
 def test_shared_link_reopens_the_same_view(make_app: Callable[..., App]) -> None:
@@ -69,7 +73,7 @@ def test_share_uses_native_sheet_on_touch_devices(make_app: Callable[..., App]) 
     app.page.wait_for_function("() => window.__shared")
     shared = app.page.evaluate("() => window.__shared")
     assert shared["title"] == "Weather History"
-    assert "location=Hanoi%2C+Vietnam" in shared["url"]
+    assert shared["url"].endswith("/hanoi/")
 
 
 def test_csv_download_hourly(app: App, tmp_path: Path) -> None:

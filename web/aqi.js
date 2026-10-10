@@ -1,29 +1,30 @@
 // US AQI bands (US EPA).
-// `advice` is the EPA's short guidance for each category.
+// `advice` is the EPA's short guidance for each category; `key` looks up the
+// translated label/advice in i18n.js.
 
 export const AQI_BANDS = [
   {
-    lower: 0, upper: 50, label: "Good", short: "Good", color: "#00E400",
+    lower: 0, upper: 50, key: "good", label: "Good", short: "Good", color: "#00E400",
     advice: "Air quality is satisfactory; little or no risk.",
   },
   {
-    lower: 51, upper: 100, label: "Moderate", short: "Moderate", color: "#FFFF00",
+    lower: 51, upper: 100, key: "moderate", label: "Moderate", short: "Moderate", color: "#FFFF00",
     advice: "Unusually sensitive people should limit prolonged outdoor exertion.",
   },
   {
-    lower: 101, upper: 150, label: "Unhealthy for Sensitive Groups", short: "Sensitive", color: "#FF7E00",
+    lower: 101, upper: 150, key: "usg", label: "Unhealthy for Sensitive Groups", short: "Sensitive", color: "#FF7E00",
     advice: "Sensitive groups should reduce prolonged or heavy outdoor exertion.",
   },
   {
-    lower: 151, upper: 200, label: "Unhealthy", short: "Unhealthy", color: "#FF0000",
+    lower: 151, upper: 200, key: "unhealthy", label: "Unhealthy", short: "Unhealthy", color: "#FF0000",
     advice: "Everyone should reduce prolonged or heavy outdoor exertion.",
   },
   {
-    lower: 201, upper: 300, label: "Very Unhealthy", short: "Very Unh.", color: "#8F3F97",
+    lower: 201, upper: 300, key: "veryUnhealthy", label: "Very Unhealthy", short: "Very Unh.", color: "#8F3F97",
     advice: "Everyone should avoid prolonged or heavy outdoor exertion.",
   },
   {
-    lower: 301, upper: 500, label: "Hazardous", short: "Hazardous", color: "#7E0023",
+    lower: 301, upper: 500, key: "hazardous", label: "Hazardous", short: "Hazardous", color: "#7E0023",
     advice: "Everyone should avoid all outdoor physical activity.",
   },
 ];

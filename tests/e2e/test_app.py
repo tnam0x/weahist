@@ -117,9 +117,9 @@ def test_autocomplete_lists_matches_and_keyboard_selects(app: App) -> None:
     loc.press("Enter")
 
     expect(page.locator("#location-suggestions")).to_be_hidden()
-    expect(loc).to_have_value("London, England, United Kingdom")
+    expect(loc).to_have_value("London, United Kingdom")
     expect(app.page.locator("#place-title")).to_have_text("London, United Kingdom")
-    assert app.prefs()["location"] == "London, England, United Kingdom"  # type: ignore[index]
+    assert app.prefs()["location"] == "London, United Kingdom"  # type: ignore[index]
 
 
 def test_autocomplete_mouse_selection(app: App) -> None:
@@ -127,7 +127,7 @@ def test_autocomplete_mouse_selection(app: App) -> None:
     page = app.page
     page.locator("#location-input").fill("Tok")
     page.locator("#location-suggestions li[role=option]", has_text="Tokyo").click()
-    expect(page.locator("#location-input")).to_have_value("Tokyo, Tokyo, Japan")
+    expect(page.locator("#location-input")).to_have_value("Tokyo, Japan")
     expect(app.page.locator("#place-title")).to_have_text("Tokyo, Japan")
 
 
@@ -152,7 +152,7 @@ def test_autocomplete_needs_two_chars_and_hides_on_escape_or_outside_click(app: 
 
     loc.fill("Lon")
     expect(suggestions).to_be_visible()
-    page.locator("h1.brand").click()
+    page.locator("#page-intro").click()
     expect(suggestions).to_be_hidden()
 
 
@@ -282,10 +282,13 @@ def test_preferences_persist_across_reload(app: App) -> None:
     page.select_option("#theme-select", "dark")
     page.locator("#location-input").fill("Lon")
     page.locator("#location-suggestions li[role=option]").first.click()
+    expect(page.locator("#place-title")).to_have_text("London, United Kingdom")
+    assert page.url.endswith("/london/?range=2w")
 
     page.reload()
     app.wait_for_chart()
-    expect(page.locator("#location-input")).to_have_value("London, England, United Kingdom")
+    # The static /london/ page labels the place itself.
+    expect(page.locator("#location-input")).to_have_value("London, United Kingdom")
     expect(page.locator('[data-range="2w"]')).to_have_attribute("aria-checked", "true")
     expect(page.locator("#theme-select")).to_have_value("dark")
     expect(page.locator("html")).to_have_attribute("data-theme", "dark")
@@ -300,7 +303,7 @@ def test_url_params_override_saved_prefs(app: App) -> None:
     )
     app.open("?location=Tokyo&range=1m&theme=dark")
     page = app.page
-    expect(page.locator("#location-input")).to_have_value("Tokyo")
+    expect(page.locator("#location-input")).to_have_value("Tokyo, Japan")
     expect(page.locator('[data-range="1m"]')).to_have_attribute("aria-checked", "true")
     expect(page.locator("html")).to_have_attribute("data-theme", "dark")
     expect(app.page.locator("#place-title")).to_have_text("Tokyo, Japan")

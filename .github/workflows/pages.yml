@@ -42,8 +42,8 @@ jobs:
 
       - name: Lint
         run: |
-          uv run ruff check tests
-          uv run ruff format --check tests
+          uv run ruff check tests scripts
+          uv run ruff format --check tests scripts
 
       - name: Test
         run: uv run pytest --screenshot only-on-failure --tracing retain-on-failure
@@ -76,10 +76,13 @@ jobs:
       - name: Setup Pages
         uses: actions/configure-pages@v5
 
+      - name: Build site (app + one page per city)
+        run: python3 scripts/build_site.py --out _site --base-path /weahist/
+
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: ./web
+          path: ./_site
 
       - name: Deploy to GitHub Pages
         id: deployment

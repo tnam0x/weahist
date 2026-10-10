@@ -2,7 +2,8 @@
 // Calls Open-Meteo directly from the browser; no backend required.
 
 import {
-  RANGE_LABELS,
+  MAX_CUSTOM_DAYS,
+  RANGE_KEYS,
   fetchHistory,
   geocode,
   todayYmd,
@@ -10,16 +11,27 @@ import {
 } from "./api.js";
 import { aqiBand } from "./aqi.js";
 import { NARROW_BREAKPOINT, buildCharts, visibleAqiBands } from "./chart.js";
+import {
+  PLOTLY_VI_LOCALE,
+  applyStaticStrings,
+  formatDate,
+  formatNumber,
+  getLang,
+  setLang,
+  t,
+} from "./i18n.js";
 
+const SITE_URL = "https://tnam0x.github.io/weahist/";
 const PREFS_KEY = "weahist.prefs.v1";
 const DEFAULTS = {
   location: "Hanoi, Vietnam",
-  range: "1w", // a RANGE_LABELS key, or "custom" (uses start/end)
+  range: "1w", // a RANGE_KEYS entry, or "custom" (uses start/end)
   theme: "system", // "system" | "light" | "dark"
   units: "c", // "c" | "f"
 };
 const MAX_RECENT = 5;
 const FETCH_TIMEOUT_MS = 30_000;
+const CITY_MATCH_KM = 10;
 
 // ---- Preferences ------------------------------------------------------
 function loadPrefs() {
@@ -39,25 +51,222 @@ function savePrefs(prefs) {
 
 const prefs = loadPrefs();
 
-// URL params override saved prefs (shareable links).
-const urlParams = new URLSearchParams(window.location.search);
-if (urlParams.get("location")) prefs.location = urlParams.get("location");
-if (urlParams.get("range")) prefs.range = urlParams.get("range");
-if (urlParams.get("start") && urlParams.get("end")) {
-  prefs.range = "custom";
-  prefs.start = urlParams.get("start");
-  prefs.end = urlParams.get("end");
+// ---- Plotly (loaded async so labels and data don't wait for it) ----------
+const plotlyReady = new Promise((resolve, reject) => {
+  if (window.Plotly) {
+    resolve(window.Plotly);
+    return;
+  }
+  const script = document.getElementById("plotly-js");
+  script.addEventListener("load", () => resolve(window.Plotly));
+  script.addEventListener("error", () => reject(new Error("Plotly failed to load")));
+}).then((Plotly) => {
+  Plotly.register(PLOTLY_VI_LOCALE);
+  return Plotly;
+});
+
+// ---- Site pages & routing -------------------------------------------------
+// Static pages exist for the places in cities.json (/<slug>/); any other
+// place lives on the root page as ?location=…
+const SITE_ROOT = new URL(document.documentElement.dataset.root || "./", window.location.href);
+const pageCity = JSON.parse(document.getElementById("page-city")?.textContent || "null");
+let cities = pageCity ? [pageCity] : [];
+const citiesReady = fetch(new URL("cities.json", SITE_ROOT))
+  .then((res) => (res.ok ? res.json() : cities))
+  .then((list) => {
+    cities = list;
+    return list;
+  })
+  .catch(() => cities);
+
+function findCity(slug) {
+  return cities.find((c) => c.slug === slug) ?? null;
 }
-if (urlParams.get("theme")) prefs.theme = urlParams.get("theme");
-if (["c", "f"].includes(urlParams.get("units"))) prefs.units = urlParams.get("units");
-// Fall back to the default preset if the saved/shared range is unusable.
-if (
-  prefs.range === "custom"
-    ? validateCustomRange(prefs.start, prefs.end) !== null
-    : !(prefs.range in RANGE_LABELS)
-) {
-  prefs.range = DEFAULTS.range;
+
+function distanceKm(a, b) {
+  const rad = (d) => (d * Math.PI) / 180;
+  const dLat = rad(b.latitude - a.latitude);
+  const dLon = rad(b.longitude - a.longitude);
+  const h =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(rad(a.latitude)) * Math.cos(rad(b.latitude)) * Math.sin(dLon / 2) ** 2;
+  return 12_742 * Math.asin(Math.sqrt(h));
 }
+
+/** The city page for a resolved location, if one is close enough. */
+function matchCity(loc) {
+  if (!loc || loc.mine) return null;
+  if (loc.slug) return findCity(loc.slug);
+  let best = null;
+  for (const city of cities) {
+    const d = distanceKm(loc, city);
+    if (d <= CITY_MATCH_KM && (!best || d < best.d)) best = { city, d };
+  }
+  return best?.city ?? null;
+}
+
+function cityName(city) {
+  return getLang() === "vi" ? city.vi : city.en;
+}
+function cityCountry(city) {
+  return getLang() === "vi" ? city.country_vi : city.country_en;
+}
+
+/** A resolved location for a city page. */
+function cityLocation(city) {
+  const name = cityName(city);
+  const country = cityCountry(city);
+  return {
+    slug: city.slug,
+    name,
+    country,
+    admin1: city.province ?? "",
+    latitude: city.latitude,
+    longitude: city.longitude,
+    timezone: city.timezone,
+    label: `${name}, ${country}`,
+  };
+}
+
+/** Display name for a location, localized when it is a known city. */
+function placeName(loc) {
+  const city = loc?.slug ? findCity(loc.slug) : null;
+  if (city) return `${cityName(city)}, ${cityCountry(city)}`;
+  return [loc?.name, loc?.country].filter(Boolean).join(", ");
+}
+
+/** The slug of the city page we're on (path below the site root), if any. */
+function slugFromPath() {
+  const rest = decodeURIComponent(window.location.pathname.slice(SITE_ROOT.pathname.length));
+  const slug = rest.replace(/\/(index\.html)?$/, "");
+  return slug && !slug.includes("/") ? slug : null;
+}
+
+/** Read location/range/units from the current URL into prefs. */
+function readUrlState({ initial }) {
+  const params = new URLSearchParams(window.location.search);
+  const slug = initial ? pageCity?.slug ?? null : slugFromPath();
+  const city = slug ? (initial ? pageCity : findCity(slug)) : null;
+  if (city) {
+    const loc = cityLocation(city);
+    prefs.location = loc.label;
+    prefs.locationResolved = loc;
+  } else if (params.get("location")) {
+    prefs.location = params.get("location");
+  } else if (!initial) {
+    // Back to the bare root page: the remembered place.
+    const saved = loadPrefs();
+    prefs.location = saved.location;
+    prefs.locationResolved = saved.locationResolved;
+  }
+  prefs.range = params.get("range") || (initial ? prefs.range : DEFAULTS.range);
+  delete prefs.start;
+  delete prefs.end;
+  if (params.get("start") && params.get("end")) {
+    prefs.range = "custom";
+    prefs.start = params.get("start");
+    prefs.end = params.get("end");
+  }
+  if (initial && params.get("theme")) prefs.theme = params.get("theme");
+  if (["c", "f"].includes(params.get("units"))) prefs.units = params.get("units");
+  else if (!initial) prefs.units = loadPrefs().units;
+  // Fall back to the default preset if the saved/shared range is unusable.
+  if (
+    prefs.range === "custom"
+      ? validateCustomRange(prefs.start, prefs.end) !== null
+      : !RANGE_KEYS.includes(prefs.range)
+  ) {
+    prefs.range = DEFAULTS.range;
+  }
+}
+
+/** Does the current URL name a place (city page or ?location=)? */
+function urlNamesPlace() {
+  return Boolean(slugFromPath() || new URLSearchParams(window.location.search).get("location"));
+}
+
+/** URL for the current state: /<slug>/ for city pages, otherwise ?location=. */
+function stateUrl({ includeTheme = false } = {}) {
+  const city = matchCity(selectedLocation);
+  const url = city ? new URL(`${city.slug}/`, SITE_ROOT) : new URL(SITE_ROOT);
+  const params = url.searchParams;
+  if (!city) params.set("location", prefs.location);
+  if (prefs.range === "custom") {
+    params.set("start", prefs.start);
+    params.set("end", prefs.end);
+  } else if (prefs.range !== DEFAULTS.range) {
+    params.set("range", prefs.range);
+  }
+  if (prefs.units !== DEFAULTS.units) params.set("units", prefs.units);
+  if (includeTheme && prefs.theme !== DEFAULTS.theme) params.set("theme", prefs.theme);
+  return url.toString();
+}
+
+// "push" when the place changes, "replace" for range/units tweaks.
+let pendingNav = null;
+function syncUrl(mode) {
+  const url = stateUrl();
+  if (url === window.location.href) return;
+  if (mode === "push") history.pushState(null, "", url);
+  else history.replaceState(null, "", url);
+}
+
+window.addEventListener("popstate", async () => {
+  await citiesReady;
+  readUrlState({ initial: false });
+  selectedLocation = prefs.locationResolved?.label === prefs.location ? prefs.locationResolved : null;
+  locInput.value = prefs.location;
+  syncRangeUI();
+  syncUnitsUI();
+  closeCustomForm();
+  refreshChart();
+});
+
+/** Title, description, canonical and intro for the current URL and place. */
+function updatePageMeta() {
+  const city = slugFromPath() ? findCity(slugFromPath()) : null;
+  const named = urlNamesPlace() && lastHistory;
+  const place = named ? placeName(lastHistory.location) : null;
+  document.title = place ? t("meta.titleCity", { place }) : t("meta.title");
+  const description = document.querySelector('meta[name="description"]');
+  if (description) {
+    description.content = place ? t("intro.city", { place }) : t("meta.description");
+  }
+  const canonical = document.querySelector('link[rel="canonical"]');
+  if (canonical) canonical.href = city ? `${SITE_URL}${city.slug}/` : SITE_URL;
+  introEl.textContent = place ? t("intro.city", { place }) : t("intro.root");
+}
+
+readUrlState({ initial: true });
+
+// ---- Language -----------------------------------------------------------
+const langToggle = document.getElementById("lang-toggle");
+function applyLanguage() {
+  applyStaticStrings();
+  const other = getLang() === "vi" ? "en" : "vi";
+  langToggle.textContent = other.toUpperCase();
+  langToggle.lang = other;
+}
+langToggle.addEventListener("click", () => {
+  setLang(getLang() === "vi" ? "en" : "vi");
+  applyLanguage();
+  if (selectedLocation?.slug) {
+    const city = findCity(selectedLocation.slug);
+    if (city) {
+      selectedLocation = cityLocation(city);
+      prefs.location = selectedLocation.label;
+      prefs.locationResolved = selectedLocation;
+      locInput.value = prefs.location;
+      savePrefs(prefs);
+    }
+  }
+  if (lastHistory) {
+    lastHistory = { ...lastHistory, location: selectedLocation ?? lastHistory.location };
+    renderAll(lastHistory);
+  }
+  updatePageMeta();
+});
+applyLanguage();
 
 // ---- Theme ------------------------------------------------------------
 const themeSelect = document.getElementById("theme-select");
@@ -100,6 +309,7 @@ const cards = Object.fromEntries(
         table: card.querySelector(".table-wrap"),
         empty: card.querySelector(".card-empty"),
         sub: card.querySelector(".card-sub"),
+        title: card.querySelector(".card-title"),
         toggle: card.querySelector('[data-action="table"]'),
         png: card.querySelector('[data-action="png"]'),
         legend: card.querySelector(".band-legend"),
@@ -123,6 +333,7 @@ const statusEl = document.getElementById("status");
 const kpisEl = document.getElementById("kpis");
 const placeTitleEl = document.getElementById("place-title");
 const rangeSubtitleEl = document.getElementById("range-subtitle");
+const introEl = document.getElementById("page-intro");
 const loadingEl = document.getElementById("loading");
 const errorBanner = document.getElementById("error-banner");
 const errorBannerText = document.getElementById("error-banner-text");
@@ -147,6 +358,7 @@ function selectRange(key) {
   savePrefs(prefs);
   syncRangeUI();
   closeCustomForm();
+  pendingNav = pendingNav ?? "replace";
   refreshChart();
 }
 
@@ -194,7 +406,7 @@ customForm.addEventListener("keydown", (e) => {
 customForm.addEventListener("submit", (e) => {
   e.preventDefault();
   const error = validateCustomRange(customStart.value, customEnd.value);
-  customError.textContent = error ?? "";
+  customError.textContent = error ? t(`custom.${error}`, { max: MAX_CUSTOM_DAYS }) : "";
   if (error) return;
   prefs.range = "custom";
   prefs.start = customStart.value;
@@ -202,6 +414,7 @@ customForm.addEventListener("submit", (e) => {
   savePrefs(prefs);
   syncRangeUI();
   closeCustomForm();
+  pendingNav = pendingNav ?? "replace";
   refreshChart();
 });
 
@@ -214,7 +427,7 @@ function currentRange() {
 function currentRangeLabel() {
   return prefs.range === "custom"
     ? `${formatDate(prefs.start)} – ${formatDate(prefs.end)}`
-    : RANGE_LABELS[prefs.range];
+    : t(`range.${prefs.range}`);
 }
 
 // ---- Units --------------------------------------------------------------
@@ -243,6 +456,7 @@ function setUnits(units) {
   if (lastHistory) {
     renderKpis(lastHistory);
     renderCharts(lastHistory);
+    syncUrl("replace");
   }
 }
 syncUnitsUI();
@@ -262,7 +476,7 @@ function withUnits(history) {
 // ---- My location ----------------------------------------------------------
 locateBtn.addEventListener("click", () => {
   if (!navigator.geolocation) {
-    showErrorBanner("Location isn't available in this browser.");
+    showErrorBanner(t("error.geoUnsupported"));
     return;
   }
   locateBtn.setAttribute("aria-busy", "true");
@@ -270,26 +484,27 @@ locateBtn.addEventListener("click", () => {
     (pos) => {
       locateBtn.removeAttribute("aria-busy");
       const { latitude, longitude } = pos.coords;
-      const loc = {
-        name: "My location",
+      const name = t("location.mine");
+      useLocation({
+        mine: true,
+        name,
         country: "",
         admin1: "",
         latitude,
         longitude,
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
-        label: `My location (${latitude.toFixed(2)}, ${longitude.toFixed(2)})`,
-      };
-      useLocation(loc);
+        label: `${name} (${latitude.toFixed(2)}, ${longitude.toFixed(2)})`,
+      });
     },
     (err) => {
       locateBtn.removeAttribute("aria-busy");
       const reason =
         err.code === err.PERMISSION_DENIED
-          ? "permission was denied"
+          ? t("error.geo.denied")
           : err.code === err.TIMEOUT
-          ? "it took too long"
-          : "your position is unavailable";
-      showErrorBanner(`Couldn't use your location: ${reason}.`);
+          ? t("error.geo.timeout")
+          : t("error.geo.unavailable");
+      showErrorBanner(t("error.geo", { reason }));
     },
     { timeout: 10_000, maximumAge: 10 * 60_000 },
   );
@@ -303,6 +518,7 @@ function useLocation(loc) {
   prefs.locationResolved = loc;
   savePrefs(prefs);
   hideSuggestions();
+  pendingNav = "push";
   refreshChart();
 }
 
@@ -317,6 +533,7 @@ let acTimer = null;
 let acResults = [];
 let acActive = -1;
 let acAbort = null;
+let acHeading = null; // e.g. "Recent" above the list
 
 function debounce(fn, ms) {
   return (...args) => {
@@ -334,7 +551,7 @@ async function searchLocations(q) {
   const ctrl = new AbortController();
   acAbort = ctrl;
   try {
-    acResults = await geocode(q, { count: 6, signal: ctrl.signal });
+    acResults = await geocode(q, { count: 6, signal: ctrl.signal, language: getLang() });
     acHeading = null;
     renderSuggestions();
   } catch (err) {
@@ -344,42 +561,53 @@ async function searchLocations(q) {
     }
   }
 }
-let acHeading = null; // e.g. "Recent" above the list
 function renderSuggestions() {
   if (acResults.length === 0) {
     hideSuggestions();
     return;
   }
-  const head = acHeading
-    ? `<li class="suggestions-head" role="presentation">${escapeHtml(acHeading)}</li>`
-    : "";
-  suggestionsEl.innerHTML =
-    head +
-    acResults
-      .map(
-        (r, i) =>
-          `<li data-idx="${i}" role="option" aria-selected="${i === acActive}" class="${i === acActive ? "active" : ""}">${escapeHtml(r.label)}</li>`,
-      )
-      .join("");
+  const items = acResults.map((r, i) => {
+    const li = el("li", i === acActive ? "active" : "", r.label);
+    li.dataset.idx = String(i);
+    li.setAttribute("role", "option");
+    li.setAttribute("aria-selected", String(i === acActive));
+    return li;
+  });
+  if (acHeading) {
+    const head = el("li", "suggestions-head", acHeading);
+    head.setAttribute("role", "presentation");
+    items.unshift(head);
+  }
+  suggestionsEl.replaceChildren(...items);
   suggestionsEl.hidden = false;
   locInput.setAttribute("aria-expanded", "true");
 }
 function hideSuggestions() {
   suggestionsEl.hidden = true;
-  suggestionsEl.innerHTML = "";
+  suggestionsEl.replaceChildren();
   acActive = -1;
   locInput.setAttribute("aria-expanded", "false");
 }
 function showRecent() {
   if (acAbort) acAbort.abort();
   acResults = prefs.recent || [];
-  acHeading = "Recent";
+  acHeading = t("location.recent");
   acActive = -1;
   renderSuggestions();
 }
 function pickSuggestion(idx) {
   const r = acResults[idx];
   if (r) useLocation(r);
+}
+
+function submitFreeText() {
+  prefs.location = locInput.value.trim();
+  delete prefs.locationResolved;
+  savePrefs(prefs);
+  hideSuggestions();
+  selectedLocation = null;
+  pendingNav = "push";
+  refreshChart();
 }
 
 locInput.addEventListener("focus", () => {
@@ -399,13 +627,7 @@ locInput.addEventListener(
 
 locInput.addEventListener("keydown", (e) => {
   if (suggestionsEl.hidden) {
-    if (e.key === "Enter") {
-      prefs.location = locInput.value.trim();
-      delete prefs.locationResolved;
-      savePrefs(prefs);
-      selectedLocation = null;
-      refreshChart();
-    }
+    if (e.key === "Enter") submitFreeText();
     return;
   }
   if (e.key === "ArrowDown") {
@@ -419,21 +641,14 @@ locInput.addEventListener("keydown", (e) => {
   } else if (e.key === "Enter") {
     e.preventDefault();
     if (acActive >= 0) pickSuggestion(acActive);
-    else {
-      prefs.location = locInput.value.trim();
-      delete prefs.locationResolved;
-      savePrefs(prefs);
-      hideSuggestions();
-      selectedLocation = null;
-      refreshChart();
-    }
+    else submitFreeText();
   } else if (e.key === "Escape") {
     hideSuggestions();
   }
 });
 
 suggestionsEl.addEventListener("mousedown", (e) => {
-  const li = e.target.closest("li");
+  const li = e.target.closest("li[data-idx]");
   if (!li) return;
   e.preventDefault();
   pickSuggestion(Number(li.dataset.idx));
@@ -450,6 +665,8 @@ document.getElementById("reset-prefs").addEventListener("click", (e) => {
   e.preventDefault();
   localStorage.removeItem(PREFS_KEY);
   Object.assign(prefs, DEFAULTS);
+  delete prefs.locationResolved;
+  delete prefs.recent;
   locInput.value = prefs.location;
   themeSelect.value = prefs.theme;
   syncRangeUI();
@@ -457,6 +674,7 @@ document.getElementById("reset-prefs").addEventListener("click", (e) => {
   closeCustomForm();
   selectedLocation = null;
   applyTheme();
+  pendingNav = "push";
   refreshChart();
 });
 
@@ -485,53 +703,46 @@ function setLoading(on) {
 
 // ---- Chart fetch + render --------------------------------------------
 let inFlight = null;
-let lastHistory = null; // cached for cheap theme re-renders
+let lastHistory = null; // cached for cheap theme/language/unit re-renders
 let selectedLocation =
   prefs.locationResolved && prefs.locationResolved.label === prefs.location
     ? prefs.locationResolved
     : null;
 
-function escapeHtml(s) {
-  return String(s)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
 async function rerenderChartIfData() {
   if (lastHistory) await renderCharts(lastHistory);
 }
 
-const EMPTY_MESSAGES = {
-  temperature: "No temperature data for this period.",
-  humidity: "No humidity data for this period.",
-  aqi: "No air-quality data for this period — it typically covers only the last 2–3 years.",
-};
+function renderAll(history) {
+  renderHeading(history);
+  renderKpis(history);
+  return renderCharts(history);
+}
 
 function cardSubtitle(key, history) {
   const daily = history.granularity === "daily";
-  const u = history.tempUnit;
-  if (key === "temperature") return daily ? `${u} · daily low–high range and mean` : `${u} · hourly`;
-  if (key === "humidity") return daily ? "% · daily low–high range and mean" : "% · hourly";
-  return daily ? "US AQI · daily mean" : "US AQI · hourly";
+  if (key === "aqi") return daily ? t("card.aqiDaily") : t("card.hourly", { unit: "US AQI" });
+  const unit = key === "temperature" ? history.tempUnit : "%";
+  return t(daily ? "card.dailyBand" : "card.hourly", { unit });
 }
 
 async function renderCharts(rawHistory) {
   const history = withUnits(rawHistory);
   const figs = buildCharts(history, effectiveTheme());
+  const Plotly = await plotlyReady;
   const config = plotlyConfig();
   await Promise.all(
     CHART_KEYS.map(async (key) => {
       const c = cards[key];
       const fig = figs[key];
       c.sub.textContent = cardSubtitle(key, history);
+      c.toggle.textContent = t(c.toggle.getAttribute("aria-pressed") === "true" ? "card.chart" : "card.table");
       if (c.legend) renderBandLegend(c.legend, fig ? history.aqi.us_aqi : null);
       c.empty.hidden = Boolean(fig);
       c.toggle.hidden = !fig;
       c.png.hidden = !fig;
       if (!fig) {
-        c.empty.textContent = EMPTY_MESSAGES[key];
+        c.empty.textContent = t(`empty.${key}`);
         c.wrap.hidden = true;
         c.table.hidden = true;
         Plotly.purge(c.chart);
@@ -540,7 +751,7 @@ async function renderCharts(rawHistory) {
       const showTable = c.toggle.getAttribute("aria-pressed") === "true";
       c.wrap.hidden = showTable;
       c.table.hidden = !showTable;
-      if (showTable) renderTable(key, history);
+      if (showTable) renderTable(key, rawHistory);
       await Plotly.react(c.chart, fig.data, fig.layout, config);
       bindSync(c.chart);
     }),
@@ -557,7 +768,7 @@ function renderBandLegend(listEl, values) {
       const item = el("li");
       const swatch = el("span", "band-swatch");
       swatch.style.background = band.color;
-      item.append(swatch, document.createTextNode(band.label));
+      item.append(swatch, document.createTextNode(t(`aqi.${band.key}`)));
       return item;
     }),
   );
@@ -567,25 +778,25 @@ function renderBandLegend(listEl, values) {
 // ---- Table view (the accessible twin of each chart) ---------------------
 function tableColumns(key, history) {
   const w = history.weather;
-  const u = history.tempUnit;
+  const unit = history.tempUnit;
   const daily = history.granularity === "daily";
   if (key === "temperature") {
     return daily
       ? [
-          [`Low (${u})`, w.temperature_2m_min, 1],
-          [`Mean (${u})`, w.temperature_2m_mean, 1],
-          [`High (${u})`, w.temperature_2m_max, 1],
+          [t("table.low", { unit }), w.temperature_2m_min, 1],
+          [t("table.mean", { unit }), w.temperature_2m_mean, 1],
+          [t("table.high", { unit }), w.temperature_2m_max, 1],
         ]
-      : [[`Temperature (${u})`, w.temperature_2m, 1]];
+      : [[t("table.temperature", { unit }), w.temperature_2m, 1]];
   }
   if (key === "humidity") {
     return daily
       ? [
-          ["Low (%)", w.relative_humidity_2m_min, 0],
-          ["Mean (%)", w.relative_humidity_2m_mean, 0],
-          ["High (%)", w.relative_humidity_2m_max, 0],
+          [t("table.low", { unit: "%" }), w.relative_humidity_2m_min, 0],
+          [t("table.mean", { unit: "%" }), w.relative_humidity_2m_mean, 0],
+          [t("table.high", { unit: "%" }), w.relative_humidity_2m_max, 0],
         ]
-      : [["Humidity (%)", w.relative_humidity_2m, 0]];
+      : [[t("table.humidity"), w.relative_humidity_2m, 0]];
   }
   return [
     ["US AQI", history.aqi.us_aqi, 0],
@@ -598,20 +809,20 @@ function renderTable(key, rawHistory) {
   const history = withUnits(rawHistory);
   const columns = tableColumns(key, history);
   const table = el("table", "data-table");
-  table.setAttribute("aria-label", `${cards[key].card.querySelector(".card-title").textContent} data`);
+  table.setAttribute("aria-label", t("table.aria", { title: cards[key].title.textContent }));
   const headRow = el("tr");
-  headRow.append(el("th", null, history.granularity === "daily" ? "Date" : "Time"));
+  headRow.append(el("th", null, t(history.granularity === "daily" ? "table.date" : "table.time")));
   for (const [label] of columns) headRow.append(el("th", null, label));
   const head = el("thead");
   head.append(headRow);
   table.append(head);
   const body = el("tbody");
-  history.times.forEach((t, i) => {
+  history.times.forEach((time, i) => {
     const row = el("tr");
-    row.append(el("td", null, t.replace("T", " ")));
+    row.append(el("td", null, time.replace("T", " ")));
     for (const [, values, digits] of columns) {
       const v = values?.[i];
-      row.append(el("td", null, v == null || !Number.isFinite(v) ? "—" : v.toFixed(digits)));
+      row.append(el("td", null, v == null || !Number.isFinite(v) ? "—" : formatNumber(v, digits)));
     }
     body.append(row);
   });
@@ -621,14 +832,14 @@ function renderTable(key, rawHistory) {
 
 for (const key of CHART_KEYS) {
   const c = cards[key];
-  c.toggle.addEventListener("click", () => {
+  c.toggle.addEventListener("click", async () => {
     const show = c.toggle.getAttribute("aria-pressed") !== "true";
     c.toggle.setAttribute("aria-pressed", String(show));
-    c.toggle.textContent = show ? "Chart" : "Table";
+    c.toggle.textContent = t(show ? "card.chart" : "card.table");
     if (show && lastHistory) renderTable(key, lastHistory);
     c.table.hidden = !show;
     c.wrap.hidden = show;
-    if (!show && c.chart._fullLayout) Plotly.Plots.resize(c.chart);
+    if (!show && c.chart._fullLayout) (await plotlyReady).Plots.resize(c.chart);
   });
 }
 
@@ -647,45 +858,33 @@ function showToast(message) {
   }, 2500);
 }
 
-/** A link that reopens exactly the current view. */
-function shareUrl() {
-  const params = new URLSearchParams();
-  params.set("location", prefs.location);
-  if (prefs.range === "custom") {
-    params.set("start", prefs.start);
-    params.set("end", prefs.end);
-  } else {
-    params.set("range", prefs.range);
-  }
-  if (prefs.units !== DEFAULTS.units) params.set("units", prefs.units);
-  if (prefs.theme !== DEFAULTS.theme) params.set("theme", prefs.theme);
-  return `${window.location.origin}${window.location.pathname}?${params}`;
-}
-
 shareBtn.addEventListener("click", async () => {
-  const url = shareUrl();
+  await citiesReady;
+  const url = stateUrl({ includeTheme: true });
   const coarse = window.matchMedia("(pointer: coarse)").matches;
   if (coarse && navigator.share) {
     try {
       await navigator.share({ title: "Weather History", url });
     } catch (err) {
-      if (err.name !== "AbortError") showToast("Couldn't open the share sheet.");
+      if (err.name !== "AbortError") showToast(t("toast.shareFailed"));
     }
     return;
   }
   try {
     await navigator.clipboard.writeText(url);
-    showToast("Link copied");
+    showToast(t("toast.copied"));
   } catch {
-    showToast("Couldn't copy — use the link in the address bar.");
+    showToast(t("toast.copyFailed"));
     history.replaceState(null, "", url);
   }
 });
 
 function fileSlug(history) {
-  const place = (history.location.name || "location")
+  const place = (history.location.slug || history.location.name || "location")
     .toLowerCase()
     .normalize("NFKD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/đ/g, "d")
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "");
   return `weahist-${place || "location"}-${history.start}_${history.end}`;
@@ -722,8 +921,8 @@ function buildCsv(rawHistory) {
   );
   const round = (v) => (typeof v === "number" ? Math.round(v * 100) / 100 : v);
   const lines = [["time", ...columns.map(([name]) => name)].join(",")];
-  history.times.forEach((t, i) => {
-    lines.push([t, ...columns.map(([, values]) => round(values?.[i]))].map(csvCell).join(","));
+  history.times.forEach((time, i) => {
+    lines.push([time, ...columns.map(([, values]) => round(values?.[i]))].map(csvCell).join(","));
   });
   return `${lines.join("\n")}\n`;
 }
@@ -742,10 +941,10 @@ csvBtn.addEventListener("click", () => {
 });
 
 for (const key of CHART_KEYS) {
-  cards[key].png.addEventListener("click", () => {
+  cards[key].png.addEventListener("click", async () => {
     const c = cards[key];
     if (!lastHistory || !c.chart._fullLayout) return;
-    Plotly.downloadImage(c.chart, {
+    (await plotlyReady).downloadImage(c.chart, {
       format: "png",
       filename: `${fileSlug(lastHistory)}-${key}`,
       width: 1200,
@@ -769,7 +968,7 @@ function bindSync(div) {
     if (syncing || !ev.xvals) return;
     syncing = true;
     try {
-      for (const other of otherCharts(div)) Plotly.Fx.hover(other, { xval: ev.xvals[0] });
+      for (const other of otherCharts(div)) window.Plotly.Fx.hover(other, { xval: ev.xvals[0] });
     } finally {
       syncing = false;
     }
@@ -778,7 +977,7 @@ function bindSync(div) {
     if (syncing) return;
     syncing = true;
     try {
-      for (const other of otherCharts(div)) Plotly.Fx.unhover(other);
+      for (const other of otherCharts(div)) window.Plotly.Fx.unhover(other);
     } finally {
       syncing = false;
     }
@@ -790,40 +989,44 @@ function bindSync(div) {
     );
     if (Object.keys(update).length === 0) return;
     syncing = true;
-    Promise.all(otherCharts(div).map((other) => Plotly.relayout(other, update))).finally(() => {
-      syncing = false;
-    });
+    Promise.all(otherCharts(div).map((other) => window.Plotly.relayout(other, update))).finally(
+      () => {
+        syncing = false;
+      },
+    );
   });
 }
 
 function plotlyConfig() {
-  const hasHover =
-    typeof window !== "undefined" &&
-    typeof window.matchMedia === "function" &&
-    window.matchMedia("(hover: hover)").matches;
+  const hasHover = window.matchMedia("(hover: hover)").matches;
   return {
     responsive: true,
     displaylogo: false,
     displayModeBar: hasHover ? "hover" : false,
     modeBarButtonsToRemove: ["lasso2d", "select2d"],
+    locale: getLang() === "vi" ? "vi" : "en",
   };
 }
 
 async function refreshChart() {
   const locText = (prefs.location || "").trim();
   if (!locText) {
-    statusEl.textContent = "Enter a location to begin.";
+    statusEl.textContent = t("status.enter");
     return;
   }
 
   // Only the first load gets a status line; refetches keep the previous
   // render (dimmed) so nothing jumps.
-  if (!lastHistory) statusEl.textContent = `Loading ${locText} (${currentRangeLabel()})…`;
+  if (!lastHistory) {
+    statusEl.textContent = t("status.loading", { place: locText, range: currentRangeLabel() });
+  }
   hideErrorBanner();
 
   if (inFlight) inFlight.abort();
   const ctrl = new AbortController();
   inFlight = ctrl;
+  const nav = pendingNav;
+  pendingNav = null;
   const timer = setTimeout(
     () => ctrl.abort(new DOMException("timeout", "TimeoutError")),
     FETCH_TIMEOUT_MS,
@@ -833,39 +1036,49 @@ async function refreshChart() {
   try {
     let location = selectedLocation;
     if (!location || location.label !== locText) {
-      let matches = await geocode(locText, { count: 1, signal: ctrl.signal });
+      const language = getLang();
+      let matches = await geocode(locText, { count: 1, signal: ctrl.signal, language });
       // Saved labels can include admin1 (e.g. "Hanoi, Hanoi, Vietnam")
       // which the geocoder doesn't match — retry with the leading segment.
       if (matches.length === 0 && locText.includes(",")) {
         const head = locText.split(",")[0].trim();
         if (head) {
-          matches = await geocode(head, { count: 1, signal: ctrl.signal });
+          matches = await geocode(head, { count: 1, signal: ctrl.signal, language });
         }
       }
-      if (matches.length === 0) throw new Error(`No matches for "${locText}"`);
-      location = matches[0];
-      selectedLocation = location;
-      prefs.locationResolved = location;
-      savePrefs(prefs);
+      if (matches.length === 0) throw new Error(t("error.noMatch", { q: locText }));
+      location = { ...matches[0], label: locText };
     }
+    await citiesReady;
+    const city = matchCity(location);
+    if (city) {
+      // Known places get their canonical, localized name everywhere.
+      location = cityLocation(city);
+      prefs.location = location.label;
+      locInput.value = location.label;
+    }
+    selectedLocation = location;
+    prefs.locationResolved = location;
+    savePrefs(prefs);
+
     const history = await fetchHistory(location, currentRange(), {
       signal: ctrl.signal,
     });
     lastHistory = history;
     rememberLocation(location);
     statusEl.textContent = "";
-    renderHeading(history);
-    renderKpis(history);
+    if (nav) syncUrl(nav);
     csvBtn.hidden = false;
-    await renderCharts(history);
+    await renderAll(history);
+    updatePageMeta();
   } catch (err) {
     if (err.name === "AbortError" && ctrl.signal.reason?.name !== "TimeoutError") {
       return; // superseded by a newer request
     }
     const msg =
       err.name === "AbortError" || err.name === "TimeoutError"
-        ? `Request timed out after ${FETCH_TIMEOUT_MS / 1000}s. Try a smaller range or check your network.`
-        : `Failed to fetch data: ${err.message}`;
+        ? t("error.timeout", { s: FETCH_TIMEOUT_MS / 1000 })
+        : t("error.fetch", { detail: err.message });
     statusEl.textContent = "";
     showErrorBanner(msg);
   } finally {
@@ -875,24 +1088,12 @@ async function refreshChart() {
   }
 }
 
-// ---- Card heading & KPI tiles -----------------------------------------
-const DATE_FMT = new Intl.DateTimeFormat("en-US", {
-  month: "short",
-  day: "numeric",
-  year: "numeric",
-});
-
-/** "2026-03-09" -> "Mar 9, 2026" (parsed at noon so no timezone can shift the day). */
-function formatDate(ymd) {
-  return DATE_FMT.format(new Date(`${ymd}T12:00:00`));
-}
-
+// ---- Heading & KPI tiles -------------------------------------------------
 function renderHeading(history) {
   const { location, start, end, granularity } = history;
-  placeTitleEl.textContent = [location.name, location.country].filter(Boolean).join(", ");
-  const granularityLabel = granularity.charAt(0).toUpperCase() + granularity.slice(1);
+  placeTitleEl.textContent = placeName(location);
   const range = start === end ? formatDate(start) : `${formatDate(start)} – ${formatDate(end)}`;
-  rangeSubtitleEl.textContent = `${range} · ${granularityLabel} · ${location.timezone}`;
+  rangeSubtitleEl.textContent = `${range} · ${t(`granularity.${granularity}`)} · ${location.timezone}`;
 }
 
 function finite(values) {
@@ -945,11 +1146,11 @@ function renderKpis(rawHistory) {
     temp
       ? kpiTile(
           "temperature",
-          "Avg temperature",
-          `${temp.avg.toFixed(1)} ${u}`,
-          `Low ${temp.low.toFixed(1)} · High ${temp.high.toFixed(1)} ${u}`,
+          t("kpi.temperature"),
+          `${formatNumber(temp.avg, 1)} ${u}`,
+          `${t("kpi.lowHigh", { low: formatNumber(temp.low, 1), high: formatNumber(temp.high, 1) })} ${u}`,
         )
-      : kpiTile("temperature", "Avg temperature", "—", "No data"),
+      : kpiTile("temperature", t("kpi.temperature"), "—", t("kpi.noData")),
   );
 
   const humid = stats(history.weather, "relative_humidity_2m", "relative_humidity_2m");
@@ -957,11 +1158,11 @@ function renderKpis(rawHistory) {
     humid
       ? kpiTile(
           "humidity",
-          "Avg humidity",
-          `${humid.avg.toFixed(0)}%`,
-          `Low ${humid.low.toFixed(0)} · High ${humid.high.toFixed(0)}%`,
+          t("kpi.humidity"),
+          `${formatNumber(humid.avg, 0)}%`,
+          `${t("kpi.lowHigh", { low: formatNumber(humid.low, 0), high: formatNumber(humid.high, 0) })}%`,
         )
-      : kpiTile("humidity", "Avg humidity", "—", "No data"),
+      : kpiTile("humidity", t("kpi.humidity"), "—", t("kpi.noData")),
   );
 
   const aqis = finite(history.aqi.us_aqi);
@@ -972,20 +1173,20 @@ function renderKpis(rawHistory) {
     const badge = el("span", "aqi-badge");
     const dot = el("span", "aqi-dot");
     dot.style.background = band.color;
-    badge.append(dot, document.createTextNode(band.label));
-    value.append(document.createTextNode(peak.toFixed(0)), badge);
-    tiles.push(kpiTile("aqi", "Peak AQI (US)", value, band.advice));
+    badge.append(dot, document.createTextNode(t(`aqi.${band.key}`)));
+    value.append(document.createTextNode(formatNumber(peak, 0)), badge);
+    tiles.push(kpiTile("aqi", t("kpi.aqi"), value, t(`aqi.${band.key}.advice`)));
   } else {
-    tiles.push(kpiTile("aqi", "Peak AQI (US)", "—", "No air-quality data for this period"));
+    tiles.push(kpiTile("aqi", t("kpi.aqi"), "—", t("kpi.noAqi")));
   }
 
   const n = history.times.length;
   tiles.push(
     kpiTile(
       "coverage",
-      "AQI coverage",
-      `${(history.aqiCoverage * 100).toFixed(0)}%`,
-      `${n} ${history.granularity} ${n === 1 ? "reading" : "readings"}`,
+      t("kpi.coverage"),
+      `${formatNumber(history.aqiCoverage * 100, 0)}%`,
+      t(`kpi.readings.${history.granularity}`, { n }),
     ),
   );
 
@@ -996,7 +1197,7 @@ function renderKpis(rawHistory) {
 // Initial render.
 refreshChart();
 
-// Re-render chart on viewport size / orientation changes so the
+// Re-render charts on viewport size / orientation changes so the
 // mobile vs. desktop layout switches correctly.
 let resizeTimer = null;
 let wasNarrow = window.innerWidth < NARROW_BREAKPOINT;

@@ -157,12 +157,12 @@ def test_recent_places_are_offered_on_focus(app: App) -> None:
     page.locator("#location-suggestions li[role=option]", has_text="London").click()
     expect(page.locator("#place-title")).to_have_text("London, United Kingdom")
 
-    page.locator("h1.brand").click()
+    page.locator("#page-intro").click()
     loc.focus()
     suggestions = page.locator("#location-suggestions")
     expect(suggestions.locator(".suggestions-head")).to_have_text("Recent")
     expect(suggestions.locator("li[role=option]")).to_have_text(
-        ["London, England, United Kingdom", "Hanoi, Vietnam"]
+        ["London, United Kingdom", "Hanoi, Vietnam"]
     )
 
     geocodes = len(app.mock.calls("geocoding"))

@@ -2,7 +2,8 @@
 // merged history payload. Each figure has a single y-axis; titles and units
 // live in the card's HTML header, so figures carry no title or legend.
 
-import { AQI_BANDS, aqiCategory, aqiMax } from "./aqi.js";
+import { AQI_BANDS, aqiBand, aqiMax } from "./aqi.js";
+import { formatNumber, getLang, t } from "./i18n.js";
 import { FONT_FAMILY, paletteFor } from "./theme.js";
 
 export const NARROW_BREAKPOINT = 640;
@@ -43,6 +44,21 @@ export function buildCharts(history, theme) {
   };
 }
 
+/** Hover and tick date formats; Vietnamese uses day/month order. */
+function dateFormats(granularity) {
+  if (getLang() !== "vi") {
+    return { hoverformat: granularity === "hourly" ? "%a %b %-d, %H:%M" : "%a %b %-d, %Y" };
+  }
+  return {
+    hoverformat: granularity === "hourly" ? "%a %-d/%-m, %H:%M" : "%a %-d/%-m/%Y",
+    tickformatstops: [
+      { dtickrange: [null, 86_400_000], value: "%H:%M<br>%-d/%-m" },
+      { dtickrange: [86_400_000, 2_592_000_000], value: "%-d/%-m" },
+      { dtickrange: [2_592_000_000, null], value: "%m/%Y" },
+    ],
+  };
+}
+
 /** AQI bands drawn behind the chart for these values (lowest first). */
 export function visibleAqiBands(values) {
   const top = aqiMax(values);
@@ -64,6 +80,8 @@ function baseLayout({ p, isNarrow, times, granularity }) {
     font: { color: p.text, family: FONT_FAMILY, size: isNarrow ? 11 : 12 },
     showlegend: false,
     hovermode: "x unified",
+    // Decimal then thousands separator: "25,0" in Vietnamese, "25.0" in English.
+    separators: getLang() === "vi" ? ",." : ".,",
     hoverlabel: {
       bgcolor: p.paperBg,
       bordercolor: p.border,
@@ -81,7 +99,7 @@ function baseLayout({ p, isNarrow, times, granularity }) {
       tickcolor: p.border,
       ticklen: 4,
       tickfont: tickFont,
-      hoverformat: granularity === "hourly" ? "%a %b %-d, %H:%M" : "%a %b %-d, %Y",
+      ...dateFormats(granularity),
       fixedrange: isNarrow,
     },
     yaxis: {
@@ -114,7 +132,7 @@ function seriesChart(ctx, { line, low, high, color, unit, digits }) {
     data.push({
       type: "scatter",
       mode: "lines",
-      name: "High",
+      name: t("chart.high"),
       x: times,
       y: high,
       line: { width: 0, color },
@@ -123,7 +141,7 @@ function seriesChart(ctx, { line, low, high, color, unit, digits }) {
     data.push({
       type: "scatter",
       mode: "lines",
-      name: "Low",
+      name: t("chart.low"),
       x: times,
       y: low,
       fill: "tonexty",
@@ -135,7 +153,7 @@ function seriesChart(ctx, { line, low, high, color, unit, digits }) {
   data.push({
     type: "scatter",
     mode: "lines",
-    name: band ? "Mean" : "Value",
+    name: band ? t("chart.mean") : "Value",
     x: times,
     y: line,
     line: { color, width: 2, shape: "spline", smoothing: 0.4 },
@@ -198,7 +216,7 @@ function aqiChart(ctx, values) {
       x: times,
       y: values,
       line: { color: p.aqiLine, width: 2, shape: "spline", smoothing: 0.4 },
-      customdata: values.map((v) => (v == null ? "" : aqiCategory(v))),
+      customdata: values.map((v) => (v == null ? "" : t(`aqi.${aqiBand(v).key}`))),
       hovertemplate: "<b>%{y:.0f}</b> · %{customdata}<extra></extra>",
     },
   ];
@@ -226,7 +244,7 @@ function annotateExtreme(layout, times, values, which, { p, color, unit, digits,
     y: values[idx],
     xref: "x",
     yref: "y",
-    text: `${which} ${values[idx].toFixed(digits)}${unit}`,
+    text: `${t(`chart.${which}`)} ${formatNumber(values[idx], digits)}${unit}`,
     showarrow: true,
     arrowhead: 0,
     arrowwidth: 1,
