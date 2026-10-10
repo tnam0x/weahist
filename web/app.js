@@ -1194,6 +1194,26 @@ function renderKpis(rawHistory) {
   kpisEl.hidden = false;
 }
 
+// ---- Offline support ----------------------------------------------------
+const offlineBanner = document.getElementById("offline-banner");
+function syncOnline() {
+  offlineBanner.hidden = navigator.onLine;
+}
+window.addEventListener("online", () => {
+  syncOnline();
+  if (!lastHistory) refreshChart();
+});
+window.addEventListener("offline", syncOnline);
+syncOnline();
+
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker
+    .register(new URL("sw.js", SITE_ROOT), { scope: SITE_ROOT.pathname })
+    .catch(() => {
+      /* unsupported or blocked: the app works without it */
+    });
+}
+
 // Initial render.
 refreshChart();
 

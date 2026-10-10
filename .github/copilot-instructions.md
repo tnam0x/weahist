@@ -20,7 +20,13 @@ web/
   chart.js     # one Plotly figure per card (single y-axis each)
   aqi.js       # US EPA AQI bands and advice
   theme.js     # chart palettes mirroring the CSS tokens
-tests/e2e/     # Playwright tests with a deterministic Open-Meteo mock
+  i18n.js      # every UI string in Vietnamese (default, indexed) and English
+  sw.js        # service worker (offline shell + last data)
+  cities.json  # places with a static page — generated, don't hand-edit
+scripts/
+  build_site.py      # web/ + /<slug>/ pages, sitemap, 404 → _site/ (stdlib only)
+  update_cities.py   # cities_source.json → web/cities.json via geocoding
+tests/e2e/     # Playwright tests against the built site, deterministic Open-Meteo mock
 ```
 
 ## Data source
@@ -34,6 +40,9 @@ Times are shown in the location's timezone.
 - Text uses ink tokens, never series colors; keep text contrast >= 4.5:1 in both themes.
 - One y-axis per chart; label extrema selectively; every chart has a table view.
 - Keep `theme.js` in sync with the CSS tokens (a test enforces it).
+- No user-visible string outside `i18n.js`; static HTML text carries `data-i18n*` keys and must
+  match the Vietnamese strings (tests enforce both). `build_site.py` repeats the Vietnamese
+  meta texts — keep them identical.
 
 ## Testing
 - Every upstream call is mocked (`tests/e2e/openmeteo_mock.py`); tests must not hit the network.

@@ -777,6 +777,15 @@ main.bar {
   font-weight: 600;
 }
 
+.offline-banner {
+  padding: 6px var(--page-pad);
+  font-size: var(--fs-xs);
+  text-align: center;
+  color: var(--text-2);
+  background: var(--surface-sunken);
+  border-bottom: 1px solid var(--hairline);
+}
+
 /* Thin indeterminate progress bar under the filter row. */
 .progress {
   position: relative;

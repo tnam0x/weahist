@@ -12,6 +12,7 @@ sitemap.xml listing every page and a 404.html that turns unknown paths into a
 from __future__ import annotations
 
 import argparse
+import hashlib
 import html
 import json
 import re
@@ -247,7 +248,24 @@ def build(src: Path, out: Path, *, base_path: str = "/weahist/", lastmod: str | 
         sitemap(cities, lastmod or date.today().isoformat()), encoding="utf-8"
     )
     (out / "404.html").write_text(not_found_page(base_path), encoding="utf-8")
+    stamp_service_worker(out)
     return len(cities)
+
+
+def stamp_service_worker(out: Path) -> None:
+    """Version the service worker's caches by the content of the whole site."""
+    sw = out / "sw.js"
+    digest = hashlib.sha256()
+    for path in sorted(p for p in out.rglob("*") if p.is_file() and p != sw):
+        digest.update(path.relative_to(out).as_posix().encode())
+        digest.update(path.read_bytes())
+    source = sw.read_text(encoding="utf-8")
+    if 'const BUILD_ID = "dev";' not in source:
+        raise SystemExit("web/sw.js is missing its BUILD_ID placeholder")
+    sw.write_text(
+        source.replace('const BUILD_ID = "dev";', f'const BUILD_ID = "{digest.hexdigest()[:12]}";'),
+        encoding="utf-8",
+    )
 
 
 def main() -> None:
